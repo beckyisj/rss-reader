@@ -275,7 +275,11 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
         </div>
 
         <div className="user-profile">
-          <p>Signed in as: <strong>{session.user.email}</strong></p>
+          <p>
+            Signed in as:
+            <br />
+            <strong>{session.user.email}</strong>
+          </p>
           <button onClick={() => supabase!.auth.signOut()}>Sign Out</button>
         </div>
       </div>
