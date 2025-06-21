@@ -1,17 +1,16 @@
 import { supabase, Feed, Article } from './supabase';
 
-// For demo purposes, we'll use a simple user ID
-// In a real app, you'd implement proper authentication
-const DEMO_USER_ID = 'demo-user-123';
-
 export const databaseService = {
   // Feed operations
   async getFeeds(): Promise<Feed[]> {
     if (!supabase) return [];
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
     const { data, error } = await supabase
       .from('feeds')
       .select('*')
-      .eq('user_id', DEMO_USER_ID)
+      .eq('user_id', user.id)
       .order('created_at', { ascending: false });
 
     if (error) {
@@ -23,10 +22,13 @@ export const databaseService = {
 
   async addFeed(url: string, title: string): Promise<Feed | null> {
     if (!supabase) return null;
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return null;
+
     const { data, error } = await supabase
       .from('feeds')
       .insert({
-        user_id: DEMO_USER_ID,
+        user_id: user.id,
         url,
         title,
         last_fetched: new Date().toISOString()
@@ -65,13 +67,16 @@ export const databaseService = {
   // Article operations
   async getArticles(): Promise<Article[]> {
     if (!supabase) return [];
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+
     const { data, error } = await supabase
       .from('articles')
       .select(`
         *,
         feeds!inner(user_id)
       `)
-      .eq('feeds.user_id', DEMO_USER_ID)
+      .eq('feeds.user_id', user.id)
       .order('pub_date', { ascending: false });
 
     if (error) {

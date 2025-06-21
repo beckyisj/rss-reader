@@ -1,17 +1,23 @@
 import React from 'react';
-import './App.css';
+import { useAuth } from './hooks/useAuth';
+import Auth from './components/Auth';
 import RSSReader from './components/RSSReader';
+import './App.css';
 
 function App() {
+  const { session, loading } = useAuth();
+
+  if (loading) {
+    return (
+      <div className="App loading-container">
+        <div className="spinner"></div>
+      </div>
+    );
+  }
+
   return (
     <div className="App">
-      <header className="App-header">
-        <h1>📰 RSS Reader</h1>
-        <p>Your personal feed aggregator</p>
-      </header>
-      <main>
-        <RSSReader />
-      </main>
+      {session ? <RSSReader session={session} /> : <Auth />}
     </div>
   );
 }

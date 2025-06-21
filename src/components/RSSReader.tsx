@@ -1,16 +1,20 @@
 import React, { useState, useEffect, useCallback } from 'react';
+import { Session } from '@supabase/supabase-js';
 import './RSSReader.css';
 import { databaseService } from '../lib/database';
-import { Feed, Article } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, Feed, Article } from '../lib/supabase';
 
-const RSSReader: React.FC = () => {
+interface RSSReaderProps {
+  session: Session;
+}
+
+const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
   const [feeds, setFeeds] = useState<Feed[]>([]);
   const [articles, setArticles] = useState<Article[]>([]);
   const [newFeedUrl, setNewFeedUrl] = useState('');
   const [loading, setLoading] = useState(false);
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
   const [showUnreadOnly, setShowUnreadOnly] = useState(false);
-  const [dbConnected, setDbConnected] = useState(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -20,10 +24,8 @@ const RSSReader: React.FC = () => {
       ]);
       setFeeds(feedsData);
       setArticles(articlesData);
-      setDbConnected(true);
     } catch (error) {
       console.error('Error loading data:', error);
-      setDbConnected(false);
       // Fallback to localStorage if database is not available
       loadFromLocalStorage();
     }
@@ -57,7 +59,7 @@ const RSSReader: React.FC = () => {
       if (data.status === 'ok') {
         let newFeed: Feed;
 
-        if (dbConnected) {
+        if (isSupabaseConfigured) {
           // Save to database
           const savedFeed = await databaseService.addFeed(newFeedUrl, data.feed.title || 'Unknown Feed');
           if (!savedFeed) throw new Error('Failed to save feed to database');
@@ -87,7 +89,7 @@ const RSSReader: React.FC = () => {
           is_read: false
         }));
 
-        if (dbConnected) {
+        if (isSupabaseConfigured) {
           // Save articles to database
           const savedArticles = await databaseService.addArticles(newArticles);
           setArticles(prev => [...savedArticles, ...prev]);
@@ -116,7 +118,7 @@ const RSSReader: React.FC = () => {
   };
 
   const removeFeed = async (feedId: string) => {
-    if (dbConnected) {
+    if (isSupabaseConfigured) {
       const success = await databaseService.deleteFeed(feedId);
       if (success) {
         setFeeds(prev => prev.filter(feed => feed.id !== feedId));
@@ -134,7 +136,7 @@ const RSSReader: React.FC = () => {
   };
 
   const markAsRead = async (articleId: string) => {
-    if (dbConnected) {
+    if (isSupabaseConfigured) {
       await databaseService.markArticleAsRead(articleId);
     }
     
@@ -158,7 +160,10 @@ const RSSReader: React.FC = () => {
       <div className="sidebar">
         <div className="feed-management">
           <h3>📡 Feeds</h3>
-          {!dbConnected && (
+          <div className="db-status">
+            {isSupabaseConfigured ? '☁️ Synced' : '⚠️ Local'}
+          </div>
+          {!isSupabaseConfigured && (
             <div className="db-warning">
               ⚠️ Using local storage (data won't sync across devices)
             </div>
@@ -200,6 +205,11 @@ const RSSReader: React.FC = () => {
             />
             Show unread only
           </label>
+        </div>
+
+        <div className="user-profile">
+          <p>Signed in as: <strong>{session.user.email}</strong></p>
+          <button onClick={() => supabase!.auth.signOut()}>Sign Out</button>
         </div>
       </div>
 
