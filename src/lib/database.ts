@@ -7,6 +7,7 @@ const DEMO_USER_ID = 'demo-user-123';
 export const databaseService = {
   // Feed operations
   async getFeeds(): Promise<Feed[]> {
+    if (!supabase) return [];
     const { data, error } = await supabase
       .from('feeds')
       .select('*')
@@ -21,6 +22,7 @@ export const databaseService = {
   },
 
   async addFeed(url: string, title: string): Promise<Feed | null> {
+    if (!supabase) return null;
     const { data, error } = await supabase
       .from('feeds')
       .insert({
@@ -40,6 +42,7 @@ export const databaseService = {
   },
 
   async deleteFeed(feedId: string): Promise<boolean> {
+    if (!supabase) return false;
     // First delete all articles for this feed
     await supabase
       .from('articles')
@@ -61,6 +64,7 @@ export const databaseService = {
 
   // Article operations
   async getArticles(): Promise<Article[]> {
+    if (!supabase) return [];
     const { data, error } = await supabase
       .from('articles')
       .select(`
@@ -78,6 +82,7 @@ export const databaseService = {
   },
 
   async addArticles(articles: Omit<Article, 'id' | 'created_at'>[]): Promise<Article[]> {
+    if (!supabase) return [];
     const { data, error } = await supabase
       .from('articles')
       .insert(articles)
@@ -91,6 +96,7 @@ export const databaseService = {
   },
 
   async markArticleAsRead(articleId: string): Promise<boolean> {
+    if (!supabase) return false;
     const { error } = await supabase
       .from('articles')
       .update({ is_read: true })
@@ -104,6 +110,7 @@ export const databaseService = {
   },
 
   async markAllArticlesAsRead(): Promise<boolean> {
+    if (!supabase) return false;
     const { error } = await supabase
       .from('articles')
       .update({ is_read: true })
