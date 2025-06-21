@@ -314,10 +314,29 @@
 summary {
   cursor: pointer;
   list-style: none; /* For Firefox */
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 5px 0;
+}
+
+summary h3 {
+  margin: 0;
 }
 
 summary::-webkit-details-marker {
   display: none; /* For Chrome */
+}
+
+summary::after {
+  content: '▾';
+  font-size: 1.2em;
+  color: #888;
+  margin-right: 10px;
+}
+
+details[open] > summary::after {
+  content: '▴';
 }
 
 /* Responsive design */
@@ -393,6 +412,10 @@ summary::-webkit-details-marker {
   
   .back-button {
     display: block;
+  }
+  
+  .user-profile {
+    display: none;
   }
   
   .article-header h2 {
