@@ -314,29 +314,37 @@
 summary {
   cursor: pointer;
   list-style: none; /* For Firefox */
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
   padding: 5px 0;
 }
 
 summary h3 {
   margin: 0;
+  display: flex;
+  align-items: center;
 }
 
 summary::-webkit-details-marker {
   display: none; /* For Chrome */
 }
 
-summary::after {
+summary h3::after {
   content: '▾';
-  font-size: 1.2em;
+  font-size: 1em;
   color: #888;
-  margin-right: 10px;
+  margin-left: 8px;
+  transform: translateY(-1px);
 }
 
-details[open] > summary::after {
+details[open] > summary h3::after {
   content: '▴';
+}
+
+.sidebar-footer {
+  text-align: center;
+  margin-top: auto;
+  padding: 20px 0 10px;
+  font-size: 0.8em;
+  color: #aaa;
 }
 
 /* Responsive design */

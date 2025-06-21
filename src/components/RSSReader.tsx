@@ -286,6 +286,10 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
           </p>
           <button onClick={() => supabase!.auth.signOut()}>Sign Out</button>
         </div>
+
+        <div className="sidebar-footer">
+          <p>P.S. you matter :)</p>
+        </div>
       </div>
 
       <div className="main-content">
