@@ -222,7 +222,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
   );
 
   return (
-    <div className="rss-reader">
+    <div className={`rss-reader ${selectedArticle ? 'article-view-active' : ''}`}>
       {notification && <div className="notification-popup">{notification}</div>}
       <div className="sidebar">
         <div className="feed-management">
@@ -310,6 +310,9 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
 
         {selectedArticle && (
           <div className="article-view">
+            <button className="back-button" onClick={() => setSelectedArticle(null)}>
+              ← All Articles
+            </button>
             <div className="article-header">
               <a href={selectedArticle.link} target="_blank" rel="noopener noreferrer">
                 <h2>{selectedArticle.title}</h2>

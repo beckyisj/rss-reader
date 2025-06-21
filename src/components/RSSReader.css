@@ -295,6 +295,22 @@
   text-decoration: underline;
 }
 
+.back-button {
+  display: none;
+  background: none;
+  border: 1px solid #ddd;
+  padding: 8px 15px;
+  border-radius: 20px;
+  cursor: pointer;
+  margin-bottom: 20px;
+  font-size: 0.9em;
+  color: #555;
+}
+
+.back-button:hover {
+  background-color: #f0f0f0;
+}
+
 /* Responsive design */
 @media (max-width: 1200px) {
   .rss-reader {
@@ -326,16 +342,46 @@
 
 @media (max-width: 768px) {
   .rss-reader {
-    border-radius: 0;
-    box-shadow: none;
+    flex-direction: column;
+    height: auto;
   }
   
   .sidebar {
-    padding: 15px;
+    width: 100%;
+    border-right: none;
+    box-shadow: none;
+    border-bottom: 1px solid #e0e0e0;
+  }
+  
+  .main-content {
+    flex-direction: column;
+    height: calc(100vh - 350px); /* Adjust based on sidebar height */
+  }
+  
+  .articles-list {
+    width: 100%;
+    border: none;
   }
   
   .article-view {
-    padding: 15px;
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-color: #f4f7f9;
+    z-index: 100;
+    height: 100%;
+    transform: translateX(100%);
+    transition: transform 0.3s ease-in-out;
+  }
+  
+  .rss-reader.article-view-active .article-view {
+    transform: translateX(0);
+  }
+  
+  .back-button {
+    display: block;
   }
   
   .article-header h2 {
