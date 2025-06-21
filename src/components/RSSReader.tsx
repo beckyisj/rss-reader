@@ -49,22 +49,27 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
   }, [loadData]);
 
   const autoDiscoverFeed = async (url: string): Promise<string | null> => {
+    let fullUrl = url.trim();
+    if (!fullUrl.startsWith('http://') && !fullUrl.startsWith('https://')) {
+      fullUrl = `https://${fullUrl}`;
+    }
+
     // 1. Check for direct feed links first
-    if (url.match(/\/(feed|rss|atom)\.xml$/) || url.match(/\/feed\/?$/)) {
-      return url;
+    if (fullUrl.match(/\/(feed|rss|atom)\.xml$/) || fullUrl.match(/\/feed\/?$/)) {
+      return fullUrl;
     }
 
     // 2. Simple rules for common platforms
-    if (url.includes('substack.com')) {
-      return new URL('/feed', url).toString();
+    if (fullUrl.includes('substack.com')) {
+      return new URL('/feed', fullUrl).toString();
     }
-    if (url.includes('medium.com')) {
+    if (fullUrl.includes('medium.com')) {
       // Handles medium.com/@user and medium.com/publication
-      const path = new URL(url).pathname;
-      return new URL(`/feed${path}`, url).toString();
+      const path = new URL(fullUrl).pathname;
+      return new URL(`/feed${path}`, fullUrl).toString();
     }
-    if (url.includes('blogspot.com')) {
-      return new URL('/feeds/posts/default', url).toString();
+    if (fullUrl.includes('blogspot.com')) {
+      return new URL('/feeds/posts/default', fullUrl).toString();
     }
 
     // 3. TODO: Add a serverless function to scrape any other URL
