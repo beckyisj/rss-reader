@@ -1,6 +1,7 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Session } from '@supabase/supabase-js';
 import he from 'he';
+import DOMPurify from 'dompurify';
 import './RSSReader.css';
 import { databaseService } from '../lib/database';
 import { supabase, isSupabaseConfigured, Feed, Article } from '../lib/supabase';
@@ -17,6 +18,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
   const [isDiscovering, setIsDiscovering] = useState(false);
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
   const [showUnreadOnly, setShowUnreadOnly] = useState(false);
+  const [notification, setNotification] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     try {
@@ -136,15 +138,18 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
         }
 
         // Add articles from the new feed, limited to the 5 most recent
-        const newArticles: Omit<Article, 'id' | 'created_at'>[] = data.items.slice(0, 5).map((item: any) => ({
-          feed_id: newFeed.id,
-          title: item.title,
-          link: item.link,
-          // Use 'content:encoded' for full content, then 'content', fallback to snippet
-          description: item['content:encoded'] || item.content || item.contentSnippet || '',
-          pub_date: item.isoDate || item.pubDate,
-          is_read: false
-        }));
+        const newArticles: Omit<Article, 'id' | 'created_at'>[] = data.items.slice(0, 5).map((item: any) => {
+          const fullContent = item['content:encoded'] || item.content || item.contentSnippet || '';
+          return {
+            feed_id: newFeed.id,
+            title: item.title,
+            link: item.link,
+            // Sanitize the HTML content before storing it
+            description: DOMPurify.sanitize(fullContent),
+            pub_date: item.isoDate || item.pubDate,
+            is_read: false
+          };
+        });
 
         if (isSupabaseConfigured) {
           // Save articles to database
@@ -172,6 +177,9 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
     } finally {
       setIsDiscovering(false);
       setLoading(false);
+      // Show notification and fade it out
+      setNotification('Imported the 5 most recent posts!');
+      setTimeout(() => setNotification(null), 3000);
     }
   };
 
@@ -215,6 +223,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
 
   return (
     <div className="rss-reader">
+      {notification && <div className="notification-popup">{notification}</div>}
       <div className="sidebar">
         <div className="feed-management">
           <h3>📡 Feeds</h3>
