@@ -311,6 +311,15 @@
   background-color: #f0f0f0;
 }
 
+summary {
+  cursor: pointer;
+  list-style: none; /* For Firefox */
+}
+
+summary::-webkit-details-marker {
+  display: none; /* For Chrome */
+}
+
 /* Responsive design */
 @media (max-width: 1200px) {
   .rss-reader {
@@ -355,7 +364,9 @@
   
   .main-content {
     flex-direction: column;
-    height: calc(100vh - 350px); /* Adjust based on sidebar height */
+    flex: 1; /* Allow this container to grow */
+    overflow-y: auto; /* Allow scrolling within this container */
+    height: auto; /* Remove the problematic fixed height */
   }
   
   .articles-list {

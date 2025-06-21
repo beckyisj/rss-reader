@@ -226,41 +226,45 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
       {notification && <div className="notification-popup">{notification}</div>}
       <div className="sidebar">
         <div className="feed-management">
-          <h3>📡 Feeds</h3>
-          <div className="db-status">
-            {isSupabaseConfigured ? '☁️ Synced' : '⚠️ Local'}
-          </div>
-          {!isSupabaseConfigured && (
-            <div className="db-warning">
-              ⚠️ Using local storage (data won't sync across devices)
+          <details>
+            <summary>
+              <h3>📡 Feeds</h3>
+            </summary>
+            <div className="db-status">
+              {isSupabaseConfigured ? '☁️ Synced' : '⚠️ Local'}
             </div>
-          )}
-          <div className="add-feed">
-            <input
-              type="text"
-              placeholder="Enter website or feed URL..."
-              value={newFeedUrl}
-              onChange={(e) => setNewFeedUrl(e.target.value)}
-              onKeyPress={(e) => e.key === 'Enter' && addFeed()}
-            />
-            <button onClick={addFeed} disabled={loading}>
-              {isDiscovering ? 'Finding Feed...' : (loading ? 'Adding...' : 'Add Feed')}
-            </button>
-          </div>
-          
-          <div className="feeds-list">
-            {feeds.map(feed => (
-              <div key={feed.id} className="feed-item">
-                <span className="feed-title">{feed.title}</span>
-                <button 
-                  onClick={() => removeFeed(feed.id)}
-                  className="remove-feed"
-                >
-                  ×
-                </button>
+            {!isSupabaseConfigured && (
+              <div className="db-warning">
+                ⚠️ Using local storage (data won't sync across devices)
               </div>
-            ))}
-          </div>
+            )}
+            <div className="add-feed">
+              <input
+                type="text"
+                placeholder="Enter website or feed URL..."
+                value={newFeedUrl}
+                onChange={(e) => setNewFeedUrl(e.target.value)}
+                onKeyPress={(e) => e.key === 'Enter' && addFeed()}
+              />
+              <button onClick={addFeed} disabled={loading}>
+                {isDiscovering ? 'Finding Feed...' : (loading ? 'Adding...' : 'Add Feed')}
+              </button>
+            </div>
+            
+            <div className="feeds-list">
+              {feeds.map(feed => (
+                <div key={feed.id} className="feed-item">
+                  <span className="feed-title">{feed.title}</span>
+                  <button 
+                    onClick={() => removeFeed(feed.id)}
+                    className="remove-feed"
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          </details>
         </div>
 
         <div className="filters">
