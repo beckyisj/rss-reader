@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useCallback } from 'react';
 import './RSSReader.css';
 import { databaseService } from '../lib/database';
 import { Feed, Article } from '../lib/supabase';
@@ -12,12 +12,7 @@ const RSSReader: React.FC = () => {
   const [showUnreadOnly, setShowUnreadOnly] = useState(false);
   const [dbConnected, setDbConnected] = useState(false);
 
-  // Load feeds and articles from database on component mount
-  useEffect(() => {
-    loadData();
-  }, []);
-
-  const loadData = async () => {
+  const loadData = useCallback(async () => {
     try {
       const [feedsData, articlesData] = await Promise.all([
         databaseService.getFeeds(),
@@ -32,7 +27,7 @@ const RSSReader: React.FC = () => {
       // Fallback to localStorage if database is not available
       loadFromLocalStorage();
     }
-  };
+  }, []);
 
   const loadFromLocalStorage = () => {
     const savedFeeds = localStorage.getItem('rss-feeds');
@@ -44,6 +39,11 @@ const RSSReader: React.FC = () => {
       setArticles(JSON.parse(savedArticles));
     }
   };
+
+  // Load feeds and articles from database on component mount
+  useEffect(() => {
+    loadData();
+  }, [loadData]);
 
   const addFeed = async () => {
     if (!newFeedUrl.trim()) return;
