@@ -72,9 +72,19 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
       return new URL('/feeds/posts/default', fullUrl).toString();
     }
 
-    // 3. TODO: Add a serverless function to scrape any other URL
-    alert("Sorry, we couldn't automatically find the feed for this site yet. Please find the exact RSS link and paste it here.");
-    return null;
+    // 3. Fallback to the universal scraper
+    try {
+      const response = await fetch(`/api/discover?url=${encodeURIComponent(fullUrl)}`);
+      const data = await response.json();
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to discover feed.');
+      }
+      return data.feedUrl;
+    } catch (error) {
+      console.error(error);
+      alert("Sorry, we couldn't automatically find a feed for this site. Please find the exact RSS link and paste it here.");
+      return null;
+    }
   };
 
   const addFeed = async () => {
@@ -218,7 +228,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
           <div className="add-feed">
             <input
               type="text"
-              placeholder="Enter RSS feed URL..."
+              placeholder="Enter website or feed URL..."
               value={newFeedUrl}
               onChange={(e) => setNewFeedUrl(e.target.value)}
               onKeyPress={(e) => e.key === 'Enter' && addFeed()}
