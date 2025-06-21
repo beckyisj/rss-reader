@@ -13,6 +13,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
   const [articles, setArticles] = useState<Article[]>([]);
   const [newFeedUrl, setNewFeedUrl] = useState('');
   const [loading, setLoading] = useState(false);
+  const [isDiscovering, setIsDiscovering] = useState(false);
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
   const [showUnreadOnly, setShowUnreadOnly] = useState(false);
 
@@ -47,13 +48,46 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
     loadData();
   }, [loadData]);
 
+  const autoDiscoverFeed = async (url: string): Promise<string | null> => {
+    // 1. Check for direct feed links first
+    if (url.match(/\/(feed|rss|atom)\.xml$/) || url.match(/\/feed\/?$/)) {
+      return url;
+    }
+
+    // 2. Simple rules for common platforms
+    if (url.includes('substack.com')) {
+      return new URL('/feed', url).toString();
+    }
+    if (url.includes('medium.com')) {
+      // Handles medium.com/@user and medium.com/publication
+      const path = new URL(url).pathname;
+      return new URL(`/feed${path}`, url).toString();
+    }
+    if (url.includes('blogspot.com')) {
+      return new URL('/feeds/posts/default', url).toString();
+    }
+
+    // 3. TODO: Add a serverless function to scrape any other URL
+    alert("Sorry, we couldn't automatically find the feed for this site yet. Please find the exact RSS link and paste it here.");
+    return null;
+  };
+
   const addFeed = async () => {
     if (!newFeedUrl.trim()) return;
 
+    setIsDiscovering(true);
     setLoading(true);
+
     try {
-      // Fetch RSS feed data
-      const response = await fetch(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(newFeedUrl)}`);
+      const discoveredUrl = await autoDiscoverFeed(newFeedUrl);
+
+      if (!discoveredUrl) {
+        // Error is handled inside autoDiscoverFeed for now
+        return;
+      }
+
+      // Fetch RSS feed data using the discovered URL
+      const response = await fetch(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(discoveredUrl)}`);
       const data = await response.json();
 
       if (data.status === 'ok') {
@@ -61,7 +95,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
 
         if (isSupabaseConfigured) {
           // Save to database
-          const savedFeed = await databaseService.addFeed(newFeedUrl, data.feed.title || 'Unknown Feed');
+          const savedFeed = await databaseService.addFeed(discoveredUrl, data.feed.title || 'Unknown Feed');
           if (!savedFeed) throw new Error('Failed to save feed to database');
           newFeed = savedFeed;
         } else {
@@ -69,7 +103,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
           newFeed = {
             id: Date.now().toString(),
             user_id: 'demo-user-123',
-            url: newFeedUrl,
+            url: discoveredUrl,
             title: data.feed.title || 'Unknown Feed',
             last_fetched: new Date().toISOString(),
             created_at: new Date().toISOString()
@@ -177,7 +211,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
               onKeyPress={(e) => e.key === 'Enter' && addFeed()}
             />
             <button onClick={addFeed} disabled={loading}>
-              {loading ? 'Adding...' : 'Add Feed'}
+              {isDiscovering ? 'Finding Feed...' : (loading ? 'Adding...' : 'Add Feed')}
             </button>
           </div>
           
