@@ -224,134 +224,135 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
   return (
     <div className={`rss-reader ${selectedArticle ? 'article-view-active' : ''}`}>
       {notification && <div className="notification-popup">{notification}</div>}
-      <div className="sidebar">
-        <div className="feed-management">
-          <details>
-            <summary>
-              <h3>📡 Feeds</h3>
-            </summary>
-            <div className="db-status">
-              {isSupabaseConfigured ? '☁️ Synced' : '⚠️ Local'}
-            </div>
-            {!isSupabaseConfigured && (
-              <div className="db-warning">
-                ⚠️ Using local storage (data won't sync across devices)
+      <div className="app-body">
+        <div className="sidebar">
+          <div className="feed-management">
+            <details>
+              <summary>
+                <h3>📡 Feeds</h3>
+              </summary>
+              <div className="db-status">
+                {isSupabaseConfigured ? '☁️ Synced' : '⚠️ Local'}
               </div>
-            )}
-            <div className="add-feed">
-              <input
-                type="text"
-                placeholder="Enter website or feed URL..."
-                value={newFeedUrl}
-                onChange={(e) => setNewFeedUrl(e.target.value)}
-                onKeyPress={(e) => e.key === 'Enter' && addFeed()}
-              />
-              <button onClick={addFeed} disabled={loading}>
-                {isDiscovering ? 'Finding Feed...' : (loading ? 'Adding...' : 'Add Feed')}
-              </button>
-            </div>
-            
-            <div className="feeds-list">
-              {feeds.map(feed => (
-                <div key={feed.id} className="feed-item">
-                  <span className="feed-title">{feed.title}</span>
-                  <button 
-                    onClick={() => removeFeed(feed.id)}
-                    className="remove-feed"
-                  >
-                    ×
-                  </button>
+              {!isSupabaseConfigured && (
+                <div className="db-warning">
+                  ⚠️ Using local storage (data won't sync across devices)
                 </div>
-              ))}
+              )}
+              <div className="add-feed">
+                <input
+                  type="text"
+                  placeholder="Enter website or feed URL..."
+                  value={newFeedUrl}
+                  onChange={(e) => setNewFeedUrl(e.target.value)}
+                  onKeyPress={(e) => e.key === 'Enter' && addFeed()}
+                />
+                <button onClick={addFeed} disabled={loading}>
+                  {isDiscovering ? 'Finding Feed...' : (loading ? 'Adding...' : 'Add Feed')}
+                </button>
+              </div>
+              
+              <div className="feeds-list">
+                {feeds.map(feed => (
+                  <div key={feed.id} className="feed-item">
+                    <span className="feed-title">{feed.title}</span>
+                    <button 
+                      onClick={() => removeFeed(feed.id)}
+                      className="remove-feed"
+                    >
+                      ×
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </details>
+          </div>
+
+          <div className="filters">
+            <label>
+              <input
+                type="checkbox"
+                checked={showUnreadOnly}
+                onChange={(e) => setShowUnreadOnly(e.target.checked)}
+              />
+              Show unread only
+            </label>
+          </div>
+
+          <div className="user-profile">
+            <p>
+              Signed in as:
+              <br />
+              <strong>{session.user.email}</strong>
+            </p>
+            <button onClick={() => supabase!.auth.signOut()}>Sign Out</button>
+          </div>
+        </div>
+
+        <div className="main-content">
+          <div className="articles-list">
+            <h3>📰 Articles ({filteredArticles.length})</h3>
+            {sortedArticles.map(article => (
+              <div 
+                key={article.id} 
+                className={`article-item ${article.is_read ? 'read' : 'unread'}`}
+                onClick={() => {
+                  setSelectedArticle(article);
+                  markAsRead(article.id);
+                }}
+              >
+                <h4>{article.title}</h4>
+                <p className="article-meta">
+                  <span className="feed-name">
+                    {feeds.find(f => f.id === article.feed_id)?.title || 'Unknown Feed'}
+                  </span>
+                  <span className="pub-date">
+                    {new Date(article.pub_date).toLocaleDateString()}
+                  </span>
+                </p>
+                <p className="article-excerpt">
+                  {he.decode(article.description).replace(/<[^>]*>/g, '').substring(0, 150)}
+                </p>
+              </div>
+            ))}
+          </div>
+
+          {selectedArticle && (
+            <div className="article-view">
+              <button className="back-button" onClick={() => setSelectedArticle(null)}>
+                ← All Articles
+              </button>
+              <div className="article-header">
+                <a href={selectedArticle.link} target="_blank" rel="noopener noreferrer">
+                  <h2>{selectedArticle.title}</h2>
+                </a>
+                <p className="article-meta">
+                  <span className="feed-name">
+                    {feeds.find(f => f.id === selectedArticle.feed_id)?.title || 'Unknown Feed'}
+                  </span>
+                  <span className="pub-date">
+                    {new Date(selectedArticle.pub_date).toLocaleDateString()}
+                  </span>
+                </p>
+              </div>
+              <div 
+                className="article-content"
+                dangerouslySetInnerHTML={{ __html: selectedArticle.description }}
+              />
+              <a 
+                href={selectedArticle.link} 
+                target="_blank" 
+                rel="noopener noreferrer"
+                className="read-more"
+              >
+                Read full article →
+              </a>
             </div>
-          </details>
-        </div>
-
-        <div className="filters">
-          <label>
-            <input
-              type="checkbox"
-              checked={showUnreadOnly}
-              onChange={(e) => setShowUnreadOnly(e.target.checked)}
-            />
-            Show unread only
-          </label>
-        </div>
-
-        <div className="user-profile">
-          <p>
-            Signed in as:
-            <br />
-            <strong>{session.user.email}</strong>
-          </p>
-          <button onClick={() => supabase!.auth.signOut()}>Sign Out</button>
-        </div>
-
-        <div className="sidebar-footer">
-          <p>P.S. you matter :)</p>
+          )}
         </div>
       </div>
-
-      <div className="main-content">
-        <div className="articles-list">
-          <h3>📰 Articles ({filteredArticles.length})</h3>
-          {sortedArticles.map(article => (
-            <div 
-              key={article.id} 
-              className={`article-item ${article.is_read ? 'read' : 'unread'}`}
-              onClick={() => {
-                setSelectedArticle(article);
-                markAsRead(article.id);
-              }}
-            >
-              <h4>{article.title}</h4>
-              <p className="article-meta">
-                <span className="feed-name">
-                  {feeds.find(f => f.id === article.feed_id)?.title || 'Unknown Feed'}
-                </span>
-                <span className="pub-date">
-                  {new Date(article.pub_date).toLocaleDateString()}
-                </span>
-              </p>
-              <p className="article-excerpt">
-                {he.decode(article.description).replace(/<[^>]*>/g, '').substring(0, 150)}
-              </p>
-            </div>
-          ))}
-        </div>
-
-        {selectedArticle && (
-          <div className="article-view">
-            <button className="back-button" onClick={() => setSelectedArticle(null)}>
-              ← All Articles
-            </button>
-            <div className="article-header">
-              <a href={selectedArticle.link} target="_blank" rel="noopener noreferrer">
-                <h2>{selectedArticle.title}</h2>
-              </a>
-              <p className="article-meta">
-                <span className="feed-name">
-                  {feeds.find(f => f.id === selectedArticle.feed_id)?.title || 'Unknown Feed'}
-                </span>
-                <span className="pub-date">
-                  {new Date(selectedArticle.pub_date).toLocaleDateString()}
-                </span>
-              </p>
-            </div>
-            <div 
-              className="article-content"
-              dangerouslySetInnerHTML={{ __html: selectedArticle.description }}
-            />
-            <a 
-              href={selectedArticle.link} 
-              target="_blank" 
-              rel="noopener noreferrer"
-              className="read-more"
-            >
-              Read full article →
-            </a>
-          </div>
-        )}
+      <div className="app-footer">
+        <p>P.S. you matter :)</p>
       </div>
     </div>
   );
