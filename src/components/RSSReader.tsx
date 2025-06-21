@@ -140,8 +140,8 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
           feed_id: newFeed.id,
           title: item.title,
           link: item.link,
-          // Use 'content' for full content, fallback to 'contentSnippet'
-          description: item.content || item.contentSnippet || '',
+          // Use 'content:encoded' for full content, then 'content', fallback to snippet
+          description: item['content:encoded'] || item.content || item.contentSnippet || '',
           pub_date: item.isoDate || item.pubDate,
           is_read: false
         }));
@@ -293,7 +293,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
                 </span>
               </p>
               <p className="article-excerpt">
-                {he.decode(article.description).replace(/<[^>]*>/g, '').substring(0, 150)}...
+                {he.decode(article.description).replace(/<[^>]*>/g, '').substring(0, 150)}
               </p>
             </div>
           ))}
