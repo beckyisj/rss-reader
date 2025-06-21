@@ -1,5 +1,6 @@
 import React, { useState, useEffect, useCallback } from 'react';
 import { Session } from '@supabase/supabase-js';
+import he from 'he';
 import './RSSReader.css';
 import { databaseService } from '../lib/database';
 import { supabase, isSupabaseConfigured, Feed, Article } from '../lib/supabase';
@@ -134,8 +135,8 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
           localStorage.setItem('rss-feeds', JSON.stringify(updatedFeeds));
         }
 
-        // Add articles from the new feed
-        const newArticles: Omit<Article, 'id' | 'created_at'>[] = data.items.map((item: any) => ({
+        // Add articles from the new feed, limited to the 5 most recent
+        const newArticles: Omit<Article, 'id' | 'created_at'>[] = data.items.slice(0, 5).map((item: any) => ({
           feed_id: newFeed.id,
           title: item.title,
           link: item.link,
@@ -292,7 +293,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
                 </span>
               </p>
               <p className="article-excerpt">
-                {article.description.replace(/<[^>]*>/g, '').substring(0, 150)}...
+                {he.decode(article.description).replace(/<[^>]*>/g, '').substring(0, 150)}...
               </p>
             </div>
           ))}
@@ -301,7 +302,9 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
         {selectedArticle && (
           <div className="article-view">
             <div className="article-header">
-              <h2>{selectedArticle.title}</h2>
+              <a href={selectedArticle.link} target="_blank" rel="noopener noreferrer">
+                <h2>{selectedArticle.title}</h2>
+              </a>
               <p className="article-meta">
                 <span className="feed-name">
                   {feeds.find(f => f.id === selectedArticle.feed_id)?.title || 'Unknown Feed'}
