@@ -101,8 +101,13 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
         return;
       }
 
+      // Determine the API base URL
+      const apiBaseUrl = process.env.NODE_ENV === 'production' 
+        ? 'https://rss-reader-steel.vercel.app' 
+        : '';
+
       // Fetch RSS feed data using our own parsing API
-      const response = await fetch(`/api/parse?url=${encodeURIComponent(discoveredUrl)}`);
+      const response = await fetch(`${apiBaseUrl}/api/parse?url=${encodeURIComponent(discoveredUrl)}`);
       const data = await response.json();
 
       if (!response.ok) {
