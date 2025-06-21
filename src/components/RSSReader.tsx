@@ -91,25 +91,31 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
         return;
       }
 
-      // Fetch RSS feed data using the discovered URL
-      const response = await fetch(`https://api.rss2json.com/v1/api.json?rss_url=${encodeURIComponent(discoveredUrl)}`);
+      // Fetch RSS feed data using our own parsing API
+      const response = await fetch(`/api/parse?url=${encodeURIComponent(discoveredUrl)}`);
       const data = await response.json();
 
-      if (data.status === 'ok') {
+      if (!response.ok) {
+        throw new Error(data.message || 'Failed to parse feed');
+      }
+
+      if (data) {
         let newFeed: Feed;
+        const feedTitle = data.title || 'Unknown Feed';
 
         if (isSupabaseConfigured) {
           // Save to database
-          const savedFeed = await databaseService.addFeed(discoveredUrl, data.feed.title || 'Unknown Feed');
+          const savedFeed = await databaseService.addFeed(discoveredUrl, feedTitle);
           if (!savedFeed) throw new Error('Failed to save feed to database');
           newFeed = savedFeed;
+          setFeeds(prev => [newFeed, ...prev]);
         } else {
           // Fallback to localStorage
           newFeed = {
             id: Date.now().toString(),
             user_id: 'demo-user-123',
             url: discoveredUrl,
-            title: data.feed.title || 'Unknown Feed',
+            title: feedTitle,
             last_fetched: new Date().toISOString(),
             created_at: new Date().toISOString()
           };
@@ -119,12 +125,13 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
         }
 
         // Add articles from the new feed
-        const newArticles: Omit<Article, 'id' | 'created_at'>[] = data.items.map((item: any, index: number) => ({
+        const newArticles: Omit<Article, 'id' | 'created_at'>[] = data.items.map((item: any) => ({
           feed_id: newFeed.id,
           title: item.title,
           link: item.link,
-          description: item.description,
-          pub_date: item.pubDate,
+          // Use 'content' for full content, fallback to 'contentSnippet'
+          description: item.content || item.contentSnippet || '',
+          pub_date: item.isoDate || item.pubDate,
           is_read: false
         }));
 
@@ -148,10 +155,11 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
       } else {
         alert('Failed to fetch RSS feed. Please check the URL.');
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error('Error adding feed:', error);
-      alert('Error fetching RSS feed. Please check the URL and try again.');
+      alert(`Error: ${error.message}`);
     } finally {
+      setIsDiscovering(false);
       setLoading(false);
     }
   };
