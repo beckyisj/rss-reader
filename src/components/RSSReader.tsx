@@ -19,6 +19,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
   const [showUnreadOnly, setShowUnreadOnly] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
+  const [selectedFeedId, setSelectedFeedId] = useState<string | null>(null);
 
   const loadData = useCallback(async () => {
     try {
@@ -213,9 +214,13 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
     );
   };
 
-  const filteredArticles = showUnreadOnly 
-    ? articles.filter(article => !article.is_read)
+  const articlesForFeed = selectedFeedId
+    ? articles.filter(article => article.feed_id === selectedFeedId)
     : articles;
+
+  const filteredArticles = showUnreadOnly 
+    ? articlesForFeed.filter(article => !article.is_read)
+    : articlesForFeed;
 
   const sortedArticles = filteredArticles.sort((a, b) => 
     new Date(b.pub_date).getTime() - new Date(a.pub_date).getTime()
@@ -253,11 +258,25 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
               </div>
               
               <div className="feeds-list">
+                <div
+                  key="all-feeds"
+                  className={`feed-item ${!selectedFeedId ? 'selected' : ''}`}
+                  onClick={() => setSelectedFeedId(null)}
+                >
+                  <span className="feed-title">All Feeds</span>
+                </div>
                 {feeds.map(feed => (
-                  <div key={feed.id} className="feed-item">
+                  <div
+                    key={feed.id}
+                    className={`feed-item ${selectedFeedId === feed.id ? 'selected' : ''}`}
+                    onClick={() => setSelectedFeedId(feed.id)}
+                  >
                     <span className="feed-title">{feed.title}</span>
                     <button 
-                      onClick={() => removeFeed(feed.id)}
+                      onClick={(e) => {
+                        e.stopPropagation(); // Prevent feed selection when deleting
+                        removeFeed(feed.id);
+                      }}
                       className="remove-feed"
                     >
                       ×

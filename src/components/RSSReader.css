@@ -131,7 +131,8 @@
 }
 
 .remove-feed:hover {
-  background: #c82333;
+  background-color: #dc3545;
+  color: white;
 }
 
 .filters {
@@ -539,4 +540,9 @@ details[open] > summary h3::after {
   20% { opacity: 1; transform: translateX(-50%) translateY(0); }
   80% { opacity: 1; transform: translateX(-50%) translateY(0); }
   100% { opacity: 0; transform: translateX(-50%) translateY(-20px); }
+}
+
+.feed-item.selected {
+  background-color: #e9ecef;
+  font-weight: bold;
 } 
