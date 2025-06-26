@@ -15,7 +15,7 @@
   "crons": [
     {
       "path": "/api/refresh-feeds",
-      "schedule": "0 * * * *"
+      "schedule": "0 0 * * *"
     }
   ]
 }
