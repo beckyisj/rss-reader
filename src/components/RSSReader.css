@@ -2,9 +2,8 @@
   display: flex;
   flex-direction: column;
   height: 100vh;
-  padding: 2rem;
-  box-sizing: border-box;
-  background: linear-gradient(135deg, #4f46e5, #8b5cf6);
+  background: transparent;
+  padding: 0;
 }
 
 .app-body {
