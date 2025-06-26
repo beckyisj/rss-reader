@@ -20,6 +20,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
   const [showUnreadOnly, setShowUnreadOnly] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
   const [selectedFeedId, setSelectedFeedId] = useState<string | null>(null);
+  const [isRefreshing, setIsRefreshing] = useState(false);
   const notificationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isProcessingRef = useRef(false);
 
@@ -239,6 +240,48 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
     );
   };
 
+  const refreshFeeds = async () => {
+    if (isRefreshing || !isSupabaseConfigured) return;
+
+    setIsRefreshing(true);
+    try {
+      const response = await fetch('/api/refresh-feeds', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+        },
+      });
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
+      }
+
+      const result = await response.text();
+      console.log('Refresh result:', result);
+
+      // Reload articles to show new ones
+      const updatedArticles = await databaseService.getArticles();
+      setArticles(updatedArticles);
+
+      // Show success notification
+      setNotification('Feeds refreshed! New articles loaded.');
+      if (notificationTimeoutRef.current) {
+        clearTimeout(notificationTimeoutRef.current);
+      }
+      notificationTimeoutRef.current = setTimeout(() => setNotification(null), 3000);
+
+    } catch (error: any) {
+      console.error('Error refreshing feeds:', error);
+      setNotification('Failed to refresh feeds. Please try again.');
+      if (notificationTimeoutRef.current) {
+        clearTimeout(notificationTimeoutRef.current);
+      }
+      notificationTimeoutRef.current = setTimeout(() => setNotification(null), 3000);
+    } finally {
+      setIsRefreshing(false);
+    }
+  };
+
   const articlesForFeed = selectedFeedId
     ? articles.filter(article => article.feed_id === selectedFeedId)
     : articles;
@@ -335,7 +378,19 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
 
         <div className="main-content">
           <div className="articles-list">
-            <h3>📰 Articles ({filteredArticles.length})</h3>
+            <div className="articles-header">
+              <h3>📰 Articles ({filteredArticles.length})</h3>
+              {isSupabaseConfigured && (
+                <button 
+                  onClick={refreshFeeds} 
+                  disabled={isRefreshing}
+                  className="refresh-button"
+                  title="Refresh all feeds"
+                >
+                  {isRefreshing ? '🔄 Refreshing...' : '🔄 Refresh'}
+                </button>
+              )}
+            </div>
             {sortedArticles.map(article => (
               <div 
                 key={article.id} 

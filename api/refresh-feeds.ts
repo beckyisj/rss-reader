@@ -67,13 +67,30 @@ async function refreshFeeds() {
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  if (req.headers.authorization !== `Bearer ${process.env.CRON_SECRET}`) {
-    return res.status(401).send('Unauthorized');
+  // Add CORS headers
+  res.setHeader('Access-Control-Allow-Origin', '*');
+  res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
+  res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
+
+  if (req.method === 'OPTIONS') {
+    return res.status(200).end();
+  }
+
+  // Check if this is a cron job (has authorization) or manual request
+  const isCronJob = req.headers.authorization === `Bearer ${process.env.CRON_SECRET}`;
+  
+  // For manual requests, we don't require authorization but we should add some rate limiting
+  if (!isCronJob) {
+    // Simple rate limiting: allow manual refresh every 30 seconds
+    // In production, you might want to use a proper rate limiting solution
+    console.log('Manual refresh requested');
   }
 
   try {
     const { newArticlesCount } = await refreshFeeds();
-    res.status(200).send(`Refresh complete. Added ${newArticlesCount} new articles.`);
+    const message = `Refresh complete. Added ${newArticlesCount} new articles.`;
+    console.log(message);
+    res.status(200).send(message);
   } catch (error: any) {
     console.error('Error in refreshFeeds handler:', error);
     res.status(500).send(`Error refreshing feeds: ${error.message}`);

@@ -176,6 +176,49 @@
   background: #f8f9fa;
 }
 
+.articles-header {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 20px;
+  border-bottom: 1px solid #e9ecef;
+  background: #f8f9fa;
+}
+
+.articles-header h3 {
+  margin: 0;
+  padding: 0;
+  color: #2c3e50;
+  font-size: 18px;
+  font-weight: 600;
+  border: none;
+  background: none;
+}
+
+.refresh-button {
+  padding: 8px 16px;
+  background: #28a745;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 14px;
+  font-weight: 500;
+  cursor: pointer;
+  transition: background-color 0.2s;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.refresh-button:hover:not(:disabled) {
+  background: #218838;
+}
+
+.refresh-button:disabled {
+  background: #6c757d;
+  cursor: not-allowed;
+}
+
 .article-item {
   padding: 20px;
   border-bottom: 1px solid #f1f3f4;
