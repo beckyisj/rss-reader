@@ -23,6 +23,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
   const [isRefreshing, setIsRefreshing] = useState(false);
   const notificationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isProcessingRef = useRef(false);
+  const [sortOrder, setSortOrder] = useState<'alphabetical' | 'recent'>('alphabetical');
 
   const loadData = useCallback(async () => {
     try {
@@ -294,16 +295,45 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
     new Date(b.pub_date).getTime() - new Date(a.pub_date).getTime()
   );
 
+  // Helper: get most recent pub_date for a feed
+  const getMostRecentPubDate = (feedId: string) => {
+    const feedArticles = articles.filter(a => a.feed_id === feedId);
+    if (feedArticles.length === 0) return 0;
+    return Math.max(...feedArticles.map(a => new Date(a.pub_date).getTime()));
+  };
+
+  // Sort feeds based on sortOrder
+  const sortedFeeds = [...feeds].sort((a, b) => {
+    if (sortOrder === 'alphabetical') {
+      return a.title.localeCompare(b.title);
+    } else {
+      // Most recent post
+      return getMostRecentPubDate(b.id) - getMostRecentPubDate(a.id);
+    }
+  });
+
   return (
     <div className={`rss-reader ${selectedArticle ? 'article-view-active' : ''}`}>
       {notification && <div className="notification-popup">{notification}</div>}
       <div className="app-body">
         <div className="sidebar">
           <div className="feed-management">
-            <details>
+            <details open>
               <summary>
                 <h3>📡 Feeds</h3>
               </summary>
+              <div style={{ margin: '10px 0' }}>
+                <label htmlFor="feed-sort-order" style={{ fontSize: 13, color: '#555' }}>Sort:&nbsp;</label>
+                <select
+                  id="feed-sort-order"
+                  value={sortOrder}
+                  onChange={e => setSortOrder(e.target.value as 'alphabetical' | 'recent')}
+                  style={{ fontSize: 13, padding: '2px 6px', borderRadius: 4 }}
+                >
+                  <option value="alphabetical">Alphabetical</option>
+                  <option value="recent">Most Recent</option>
+                </select>
+              </div>
               <div className="db-status">
                 {isSupabaseConfigured ? '☁️ Synced' : '⚠️ Local'}
               </div>
@@ -333,7 +363,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
                 >
                   <span className="feed-title">All Feeds</span>
                 </div>
-                {feeds.map(feed => (
+                {sortedFeeds.map(feed => (
                   <div
                     key={feed.id}
                     className={`feed-item ${selectedFeedId === feed.id ? 'selected' : ''}`}
