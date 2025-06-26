@@ -8,14 +8,24 @@ export const useAuth = () => {
 
   useEffect(() => {
     const getSession = async () => {
-      const { data: { session } } = await supabase!.auth.getSession();
+      if (!supabase) {
+        setLoading(false);
+        return;
+      }
+      
+      const { data: { session } } = await supabase.auth.getSession();
       setSession(session);
       setLoading(false);
     };
 
     getSession();
 
-    const { data: { subscription } } = supabase!.auth.onAuthStateChange(
+    if (!supabase) {
+      setLoading(false);
+      return;
+    }
+
+    const { data: { subscription } } = supabase.auth.onAuthStateChange(
       (_event, session) => {
         setSession(session);
       }

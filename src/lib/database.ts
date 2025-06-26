@@ -88,6 +88,9 @@ export const databaseService = {
 
   async addArticles(articles: Omit<Article, 'id' | 'created_at'>[]): Promise<Article[]> {
     if (!supabase) return [];
+    const { data: { user } } = await supabase.auth.getUser();
+    if (!user) return [];
+    
     const { data, error } = await supabase
       .from('articles')
       .insert(articles)

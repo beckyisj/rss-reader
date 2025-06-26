@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Session } from '@supabase/supabase-js';
 import he from 'he';
 import DOMPurify from 'dompurify';
@@ -20,6 +20,8 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
   const [showUnreadOnly, setShowUnreadOnly] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
   const [selectedFeedId, setSelectedFeedId] = useState<string | null>(null);
+  const notificationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const isProcessingRef = useRef(false);
 
   const loadData = useCallback(async () => {
     try {
@@ -52,6 +54,15 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
     loadData();
   }, [loadData]);
 
+  // Clear notification timeout on unmount
+  useEffect(() => {
+    return () => {
+      if (notificationTimeoutRef.current) {
+        clearTimeout(notificationTimeoutRef.current);
+      }
+    };
+  }, []);
+
   const autoDiscoverFeed = async (url: string): Promise<string | null> => {
     let fullUrl = url.trim();
     if (!fullUrl.startsWith('http://') && !fullUrl.startsWith('https://')) {
@@ -79,21 +90,29 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
     // 3. Fallback to the universal scraper
     try {
       const response = await fetch(`/api/discover?url=${encodeURIComponent(fullUrl)}`);
-      const data = await response.json();
+      
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to discover feed.');
+        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
+        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
       }
+      
+      const data = await response.json();
       return data.feedUrl;
     } catch (error) {
-      console.error(error);
-      alert("Sorry, we couldn't automatically find a feed for this site. Please find the exact RSS link and paste it here.");
+      console.error('Feed discovery error:', error);
+      if (error instanceof TypeError && error.message.includes('fetch')) {
+        alert("Network error: Please check your internet connection and try again.");
+      } else {
+        alert(`Sorry, we couldn't automatically find a feed for this site. Please find the exact RSS link and paste it here. Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
+      }
       return null;
     }
   };
 
   const addFeed = async () => {
-    if (!newFeedUrl.trim()) return;
+    if (!newFeedUrl.trim() || isProcessingRef.current) return;
 
+    isProcessingRef.current = true;
     setIsDiscovering(true);
     setLoading(true);
 
@@ -107,11 +126,13 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
 
       // Fetch RSS feed data using our own parsing API
       const response = await fetch(`/api/parse?url=${encodeURIComponent(discoveredUrl)}`);
-      const data = await response.json();
-
+      
       if (!response.ok) {
-        throw new Error(data.message || 'Failed to parse feed');
+        const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
+        throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
       }
+      
+      const data = await response.json();
 
       if (data) {
         let newFeed: Feed;
@@ -178,9 +199,13 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
     } finally {
       setIsDiscovering(false);
       setLoading(false);
+      isProcessingRef.current = false;
       // Show notification and fade it out
       setNotification('Imported the 5 most recent posts!');
-      setTimeout(() => setNotification(null), 3000);
+      if (notificationTimeoutRef.current) {
+        clearTimeout(notificationTimeoutRef.current);
+      }
+      notificationTimeoutRef.current = setTimeout(() => setNotification(null), 3000);
     }
   };
 
@@ -304,7 +329,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
               <br />
               <strong>{session.user.email}</strong>
             </p>
-            <button onClick={() => supabase!.auth.signOut()}>Sign Out</button>
+            <button onClick={() => supabase?.auth.signOut()}>Sign Out</button>
           </div>
         </div>
 
@@ -356,7 +381,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
               </div>
               <div 
                 className="article-content"
-                dangerouslySetInnerHTML={{ __html: selectedArticle.description }}
+                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(selectedArticle.description) }}
               />
               <a 
                 href={selectedArticle.link} 
