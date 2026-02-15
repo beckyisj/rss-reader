@@ -8,6 +8,20 @@ import { supabase, isSupabaseConfigured, Feed, Article, FEED_COLORS } from '../l
 const PAGE_SIZE = 30;
 const STALE_HOURS = 48;
 
+function readingTime(html: string): string {
+  const text = html.replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+  const words = text.split(' ').filter(w => w.length > 0).length;
+  const mins = Math.max(1, Math.round(words / 230));
+  return `${mins} min read`;
+}
+
+function getFaviconUrl(feedUrl: string): string {
+  try {
+    const domain = new URL(feedUrl).hostname;
+    return `https://www.google.com/s2/favicons?sz=32&domain=${domain}`;
+  } catch { return ''; }
+}
+
 function timeAgo(dateStr: string): string {
   const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
   if (seconds < 0) return 'just now';
@@ -57,6 +71,10 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
   const [readingProgress, setReadingProgress] = useState(0);
   const [sidebarWidth, setSidebarWidth] = useState(260);
   const [articleListWidth, setArticleListWidth] = useState(360);
+  const [searchQuery, setSearchQuery] = useState('');
+  const [fontSize, setFontSize] = useState<'small' | 'medium' | 'large'>(() => {
+    return (localStorage.getItem('rss-font-size') as any) || 'medium';
+  });
   const [tutorialStep, setTutorialStep] = useState(() => {
     return localStorage.getItem('rss-tutorial-done') ? -1 : 0;
   });
@@ -481,6 +499,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
     .filter(a => showArchived ? a.is_archived : !a.is_archived)
     .filter(a => !showUnreadOnly || !a.is_read)
     .filter(a => !showSavedOnly || a.is_saved)
+    .filter(a => !searchQuery || a.title.toLowerCase().includes(searchQuery.toLowerCase()))
     .sort((a, b) => new Date(b.pub_date).getTime() - new Date(a.pub_date).getTime());
 
   const visibleArticles = filteredArticles.slice(0, visibleCount);
@@ -720,6 +739,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
               {sortedFeeds.map(feed => (
                 <div key={feed.id} className={`feed-item ${selectedFeedId === feed.id ? 'selected' : ''}`}
                   onClick={() => setSelectedFeedId(feed.id)} title={`Last fetched: ${timeAgo(feed.last_fetched)}`}>
+                  <img className="feed-favicon" src={getFaviconUrl(feed.url)} alt="" width="16" height="16" loading="lazy" />
                   {feed.color && <span className="feed-color-dot" style={{ background: feed.color }} />}
                   {isFeedStale(feed) && <span className="feed-stale-dot" title={`Not fetched in ${STALE_HOURS}h+`} />}
                   <span className="feed-title">{feed.title}</span>
@@ -785,6 +805,11 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
         {/* ======== Main content ======== */}
         <div className="main-content">
           <div className="articles-list" ref={articleListRef} style={{ width: articleListWidth }}>
+            <div className="search-bar">
+              <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="7" cy="7" r="5"/><path d="M11 11l3.5 3.5"/></svg>
+              <input type="text" placeholder="Search articles..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
+              {searchQuery && <button className="search-clear" onClick={() => setSearchQuery('')}>&times;</button>}
+            </div>
             <div className="articles-header">
               <div className="filter-tabs">
                 <button className={`filter-tab ${!showUnreadOnly && !showSavedOnly && !showArchived ? 'active' : ''}`}
@@ -904,6 +929,19 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
                       title={selectedArticle.is_archived ? 'Unarchive' : 'Archive'}>
                       <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="1.5" y="2" width="13" height="3.5" rx="0.75"/><path d="M3 5.5v7.5h10V5.5"/><path d="M6.5 9h3"/></svg>
                     </button>
+                    <button className="icon-btn" onClick={() => { navigator.clipboard.writeText(selectedArticle.link); showNotification('Link copied!'); }} title="Copy link">
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><path d="M6.5 9.5a3.5 3.5 0 005 0l2-2a3.5 3.5 0 00-5-5l-1 1"/><path d="M9.5 6.5a3.5 3.5 0 00-5 0l-2 2a3.5 3.5 0 005 5l1-1"/></svg>
+                    </button>
+                    <span className="toolbar-divider" />
+                    <button className={`icon-btn font-size-btn ${fontSize === 'small' ? 'active' : ''}`}
+                      onClick={() => { const s = 'small'; setFontSize(s); localStorage.setItem('rss-font-size', s); }}
+                      title="Small text"><span style={{ fontSize: 11 }}>A</span></button>
+                    <button className={`icon-btn font-size-btn ${fontSize === 'medium' ? 'active' : ''}`}
+                      onClick={() => { const s = 'medium'; setFontSize(s); localStorage.setItem('rss-font-size', s); }}
+                      title="Medium text"><span style={{ fontSize: 14 }}>A</span></button>
+                    <button className={`icon-btn font-size-btn ${fontSize === 'large' ? 'active' : ''}`}
+                      onClick={() => { const s = 'large'; setFontSize(s); localStorage.setItem('rss-font-size', s); }}
+                      title="Large text"><span style={{ fontSize: 17 }}>A</span></button>
                   </div>
                 </div>
 
@@ -912,11 +950,12 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
                   <div className="article-meta">
                     <span className="feed-name">{feeds.find(f => f.id === selectedArticle.feed_id)?.title || 'Unknown Feed'}</span>
                     <span className="pub-date">{timeAgo(selectedArticle.pub_date)}</span>
+                    <span className="reading-time">{readingTime(selectedArticle.description)}</span>
                     <a href={selectedArticle.link} target="_blank" rel="noopener noreferrer" className="read-original">Read original &rarr;</a>
                   </div>
                 </div>
 
-                <div className="article-content" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(selectedArticle.description) }} />
+                <div className={`article-content font-${fontSize}`} dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(selectedArticle.description) }} />
                 <a href={selectedArticle.link} target="_blank" rel="noopener noreferrer" className="read-more">Read full article &rarr;</a>
               </div>
             </div>

@@ -419,6 +419,16 @@
   font-weight: 600;
 }
 
+/* ---- Feed favicon ---- */
+.feed-favicon {
+  width: 16px;
+  height: 16px;
+  border-radius: 3px;
+  flex-shrink: 0;
+  margin-right: 8px;
+  opacity: 0.8;
+}
+
 /* ---- Feed color dot ---- */
 .feed-color-dot {
   width: 8px;
@@ -705,6 +715,48 @@
   flex-shrink: 0;
 }
 
+/* ---- Search bar ---- */
+.search-bar {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 14px;
+  border-bottom: 1px solid #f5f3ef;
+  background: #fff;
+  position: sticky;
+  top: 0;
+  z-index: 3;
+  color: #bfb9b0;
+}
+
+.search-bar input {
+  flex: 1;
+  border: none;
+  outline: none;
+  font-size: 13px;
+  color: #2d2a26;
+  background: transparent;
+}
+
+.search-bar input::placeholder {
+  color: #d4cfc7;
+}
+
+.search-clear {
+  background: none;
+  border: none;
+  color: #bfb9b0;
+  font-size: 16px;
+  cursor: pointer;
+  padding: 0 2px;
+  line-height: 1;
+  transition: color 0.15s;
+}
+
+.search-clear:hover {
+  color: #5a5650;
+}
+
 .articles-header {
   display: flex;
   justify-content: space-between;
@@ -713,7 +765,7 @@
   border-bottom: 1px solid #eae6df;
   background: #fff;
   position: sticky;
-  top: 0;
+  top: 38px;
   z-index: 2;
   gap: 8px;
 }
@@ -880,6 +932,17 @@
   color: #bfb9b0;
 }
 
+.reading-time {
+  color: #d4cfc7;
+  font-size: 11px;
+  font-style: italic;
+}
+
+.reading-time::before {
+  content: '·';
+  margin-right: 8px;
+}
+
 .read-original {
   margin-left: auto;
   font-size: 11px;
@@ -1023,6 +1086,28 @@
 .icon-btn.active:hover {
   background: #fef5ee;
 }
+
+.toolbar-divider {
+  width: 1px;
+  height: 18px;
+  background: #eae6df;
+  margin: 0 4px;
+}
+
+.font-size-btn {
+  width: 28px !important;
+  height: 28px !important;
+}
+
+.font-size-btn span {
+  font-weight: 700;
+  color: inherit;
+}
+
+/* ---- Font sizes ---- */
+.article-content.font-small { font-size: 14.5px; line-height: 1.7; }
+.article-content.font-medium { font-size: 16.5px; line-height: 1.8; }
+.article-content.font-large { font-size: 19px; line-height: 1.85; }
 
 .article-header {
   margin-bottom: 32px;
