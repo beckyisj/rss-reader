@@ -1422,13 +1422,33 @@
   color: #6b665e;
 }
 
+.shortcuts-divider {
+  border: none;
+  border-top: 1px solid #e8e4dc;
+  margin: 8px 0;
+}
+.replay-tutorial-btn {
+  width: 100%;
+  padding: 8px;
+  background: none;
+  border: 1px solid #d4cfc6;
+  border-radius: 6px;
+  color: #6b665e;
+  font-size: 13px;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+.replay-tutorial-btn:hover {
+  background: #f5f0e8;
+  color: #2d2a26;
+}
+
 /* ---- Tutorial / Onboarding ---- */
 
 .tutorial-overlay {
   position: fixed;
   inset: 0;
-  background: rgba(45, 42, 38, 0.35);
-  backdrop-filter: blur(3px);
+  background: rgba(45, 42, 38, 0.18);
   z-index: 1100;
   display: flex;
   align-items: center;

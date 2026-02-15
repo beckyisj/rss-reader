@@ -79,6 +79,11 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
     return (localStorage.getItem('rss-font-size') as any) || 'medium';
   });
   const [tutorialStep, setTutorialStep] = useState(() => {
+    if (new URLSearchParams(window.location.search).has('tutorial')) {
+      localStorage.removeItem('rss-tutorial-done');
+      window.history.replaceState({}, '', window.location.pathname);
+      return 0;
+    }
     return localStorage.getItem('rss-tutorial-done') ? -1 : 0;
   });
 
@@ -97,6 +102,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
   const overflowRef = useRef<HTMLDivElement>(null);
   const opmlInputRef = useRef<HTMLInputElement>(null);
   const actionsRef = useRef<{ markAsRead: (id: string) => void; toggleSaved: (id: string) => void; toggleArchived: (id: string) => void; toggleReadStatus: (id: string) => void }>({ markAsRead: () => {}, toggleSaved: () => {}, toggleArchived: () => {}, toggleReadStatus: () => {} });
+  const tutorialArticleRef = useRef<string | null>(null);
 
   feedsRef.current = feeds;
   activeIndexRef.current = activeIndex;
@@ -532,6 +538,8 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
             <div className="shortcut-row"><div className="shortcut-keys"><kbd>e</kbd></div><span>Archive / unarchive</span></div>
             <div className="shortcut-row"><div className="shortcut-keys"><kbd>u</kbd></div><span>Toggle read / unread</span></div>
             <div className="shortcut-row"><div className="shortcut-keys"><kbd>?</kbd></div><span>Show this menu</span></div>
+            <hr className="shortcuts-divider" />
+            <button className="replay-tutorial-btn" onClick={() => { setShowShortcuts(false); localStorage.removeItem('rss-tutorial-done'); setTutorialStep(0); }}>Replay tutorial</button>
           </div>
         </div>
       )}
@@ -571,7 +579,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
           {
             title: 'Article Goodies',
             body: 'When you open an article, you\'ll find:\n\n📖 Reading time estimate\n🔗 Copy link button\n🔤 Font size toggle (S / M / L)\n↗ "Read original" link to the source',
-            target: '.article-view-toolbar', prefer: 'below',
+            target: '.article-view-actions', prefer: 'below',
           },
           {
             title: 'Add Newsletters',
@@ -654,11 +662,37 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
               </div>
               <div className="tutorial-actions">
                 {tutorialStep > 0 && (
-                  <button className="tutorial-back" onClick={() => setTutorialStep(s => s - 1)}>Back</button>
+                  <button className="tutorial-back" onClick={() => {
+                    const prev = tutorialStep - 1;
+                    if (prev === 6 && !selectedArticle && articles.length > 0) {
+                      setSelectedArticle(articles[0]);
+                      tutorialArticleRef.current = articles[0].id;
+                    }
+                    if (tutorialStep === 6 && tutorialArticleRef.current) {
+                      actionsRef.current.toggleReadStatus(tutorialArticleRef.current);
+                      tutorialArticleRef.current = null;
+                      setSelectedArticle(null);
+                    }
+                    setTutorialStep(prev);
+                  }}>Back</button>
                 )}
                 <button className="tutorial-next" onClick={() => {
                   if (isLast) { localStorage.setItem('rss-tutorial-done', '1'); setTutorialStep(-1); }
-                  else setTutorialStep(s => s + 1);
+                  else {
+                    const next = tutorialStep + 1;
+                    // Auto-open first article for "Article Goodies" step (index 6)
+                    if (next === 6 && !selectedArticle && articles.length > 0) {
+                      setSelectedArticle(articles[0]);
+                      tutorialArticleRef.current = articles[0].id;
+                    }
+                    // Close article and mark unread when leaving that step
+                    if (tutorialStep === 6 && tutorialArticleRef.current) {
+                      actionsRef.current.toggleReadStatus(tutorialArticleRef.current);
+                      tutorialArticleRef.current = null;
+                      setSelectedArticle(null);
+                    }
+                    setTutorialStep(next);
+                  }
                 }}>
                   {isLast ? 'Got it! 💕' : 'Next'}
                 </button>
