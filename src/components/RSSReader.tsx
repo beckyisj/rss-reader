@@ -907,6 +907,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
                   <div className="article-meta">
                     <span className="feed-name">{feeds.find(f => f.id === selectedArticle.feed_id)?.title || 'Unknown Feed'}</span>
                     <span className="pub-date">{timeAgo(selectedArticle.pub_date)}</span>
+                    <a href={selectedArticle.link} target="_blank" rel="noopener noreferrer" className="read-original">Read original &rarr;</a>
                   </div>
                 </div>
 
