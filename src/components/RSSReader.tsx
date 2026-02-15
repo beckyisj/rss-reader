@@ -50,6 +50,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
   const [activeIndex, setActiveIndex] = useState(-1);
   const [addMode, setAddMode] = useState<AddMode>('feed');
   const [newsletterName, setNewsletterName] = useState('');
+  const [newsletterUrl, setNewsletterUrl] = useState('');
   const [newsletterResult, setNewsletterResult] = useState<{ email: string; feedUrl: string } | null>(null);
   const [overflowFeedId, setOverflowFeedId] = useState<string | null>(null);
   const [overflowPos, setOverflowPos] = useState<{ top: number; left: number } | null>(null);
@@ -59,6 +60,9 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
   const [readingProgress, setReadingProgress] = useState(0);
   const [sidebarWidth, setSidebarWidth] = useState(260);
   const [articleListWidth, setArticleListWidth] = useState(360);
+  const [tutorialStep, setTutorialStep] = useState(() => {
+    return localStorage.getItem('rss-tutorial-done') ? -1 : 0;
+  });
 
   const notificationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const resizingRef = useRef<'sidebar' | 'articles' | null>(null);
@@ -213,6 +217,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
     const handler = (e: KeyboardEvent) => {
       const tag = (e.target as HTMLElement).tagName;
       if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)) return;
+      if (document.querySelector('.tutorial-overlay') || document.querySelector('.shortcuts-overlay')) return;
       const visible = visibleArticlesRef.current;
       switch (e.key) {
         case 'j': case 'ArrowDown':
@@ -432,6 +437,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
       const updated = { ...article, is_saved: !article.is_saved };
       setArticles(prev => prev.map(a => a.id === articleId ? updated : a));
       if (selectedArticle?.id === articleId) setSelectedArticle(updated);
+      showNotification(updated.is_saved ? 'Saved' : 'Unsaved');
     }
   };
 
@@ -528,6 +534,123 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
         </div>
       )}
 
+      {tutorialStep >= 0 && (() => {
+        const steps: { title: string; body: string; target: string; prefer: 'above' | 'below' | 'right' | 'none' }[] = [
+          {
+            title: 'Hey Love 💕',
+            body: 'Becky gave this RSS Reader a zhuzh.\nLet me walk you through some new things!',
+            target: '', prefer: 'none',
+          },
+          {
+            title: 'Filter Tabs',
+            body: 'Slide between All, Unread, and Saved to quickly filter your articles.',
+            target: '.filter-tabs', prefer: 'below',
+          },
+          {
+            title: 'Unread Bubbles',
+            body: 'Each feed shows how many unread articles you have. No more guessing!',
+            target: '.feeds-list', prefer: 'right',
+          },
+          {
+            title: 'Keyboard Shortcuts',
+            body: 'Press ? anytime to see all shortcuts.\n\nj / k — navigate up and down\no — open an article\ns — save it\ne — archive it\nEsc — close',
+            target: '.header-icon-btn', prefer: 'below',
+          },
+          {
+            title: 'Resizable Panels',
+            body: 'Drag the edges between panels to make them wider or narrower.',
+            target: '.resize-handle', prefer: 'right',
+          },
+          {
+            title: 'Add Newsletters',
+            body: 'Some newsletters don\'t have RSS feeds — but we got you.\n\nHit the + button → Newsletter tab, and we\'ll generate a special email address. Subscribe with that email, and new issues show up here.',
+            target: '.add-feed-toggle', prefer: 'below',
+          },
+          {
+            title: 'One More Thing...',
+            body: 'Check the bottom of the sidebar 🥰',
+            target: '.sidebar-footer', prefer: 'above',
+          },
+        ];
+        const step = steps[tutorialStep];
+        const isLast = tutorialStep === steps.length - 1;
+
+        let style: React.CSSProperties = {};
+        let arrowOffset: number | null = null;
+        const BUBBLE_W = 320;
+        const BUBBLE_H_EST = 220; // estimated max bubble height
+        const PAD = 12;
+        // Determine actual placement direction based on available space
+        let placement: 'above' | 'below' | 'right' | 'left' | 'center' = 'center';
+        if (step.target) {
+          const el = document.querySelector(step.target);
+          if (el) {
+            const rect = el.getBoundingClientRect();
+            const centerX = rect.left + rect.width / 2;
+            const centerY = rect.top + rect.height / 2;
+            const spaceAbove = rect.top;
+            const spaceBelow = window.innerHeight - rect.bottom;
+            const spaceRight = window.innerWidth - rect.right;
+
+            // Pick placement: honor preference if it fits, otherwise flip
+            if (step.prefer === 'below') {
+              placement = spaceBelow > BUBBLE_H_EST + PAD ? 'below' : 'above';
+            } else if (step.prefer === 'above') {
+              placement = spaceAbove > BUBBLE_H_EST + PAD ? 'above' : 'below';
+            } else if (step.prefer === 'right') {
+              placement = spaceRight > BUBBLE_W + PAD ? 'right' : 'left';
+            }
+
+            if (placement === 'below' || placement === 'above') {
+              let left = Math.max(PAD, Math.min(centerX - BUBBLE_W / 2, window.innerWidth - BUBBLE_W - PAD));
+              arrowOffset = centerX - left;
+              if (placement === 'below') {
+                style = { position: 'fixed', top: rect.bottom + PAD, left };
+              } else {
+                style = { position: 'fixed', bottom: window.innerHeight - rect.top + PAD, left };
+              }
+            } else if (placement === 'right') {
+              let top = Math.max(PAD, Math.min(centerY - BUBBLE_H_EST / 2, window.innerHeight - BUBBLE_H_EST - PAD));
+              style = { position: 'fixed', top, left: rect.right + PAD };
+            } else if (placement === 'left') {
+              let top = Math.max(PAD, Math.min(centerY - BUBBLE_H_EST / 2, window.innerHeight - BUBBLE_H_EST - PAD));
+              style = { position: 'fixed', top, right: window.innerWidth - rect.left + PAD };
+            }
+          }
+        }
+        // Arrow class: 'top' means arrow at top of bubble (pointing up toward target above)
+        const arrowDirMap = { above: 'bottom', below: 'top', right: 'left', left: 'right', center: 'none' } as const;
+        const arrowClass = `tutorial-arrow-${arrowDirMap[placement]}`;
+
+        return (
+          <div className="tutorial-overlay" onClick={() => { localStorage.setItem('rss-tutorial-done', '1'); setTutorialStep(-1); }}>
+            <div className={`tutorial-bubble ${placement === 'center' ? 'tutorial-centered' : arrowClass}`} style={{ ...style, '--arrow-left': arrowOffset != null ? `${arrowOffset}px` : '50%' } as React.CSSProperties} onClick={e => e.stopPropagation()}>
+              <div className="tutorial-header">
+                <h3>{step.title}</h3>
+                <span className="tutorial-counter">{tutorialStep + 1} / {steps.length}</span>
+              </div>
+              <p className="tutorial-body">{step.body}</p>
+              <div className="tutorial-dots">
+                {steps.map((_, i) => (
+                  <span key={i} className={`tutorial-dot ${i === tutorialStep ? 'active' : ''} ${i < tutorialStep ? 'done' : ''}`} />
+                ))}
+              </div>
+              <div className="tutorial-actions">
+                {tutorialStep > 0 && (
+                  <button className="tutorial-back" onClick={() => setTutorialStep(s => s - 1)}>Back</button>
+                )}
+                <button className="tutorial-next" onClick={() => {
+                  if (isLast) { localStorage.setItem('rss-tutorial-done', '1'); setTutorialStep(-1); }
+                  else setTutorialStep(s => s + 1);
+                }}>
+                  {isLast ? 'Got it! 💕' : 'Next'}
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
+
       <div className="app-body">
         {/* ======== Sidebar ======== */}
         <div className="sidebar" style={{ width: sidebarWidth }}>
@@ -571,20 +694,39 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
                   <div className="add-feed">
                     {!newsletterResult ? (
                       <>
-                        <input type="text" placeholder="Newsletter name (e.g. Morning Brew)" value={newsletterName}
+                        <p className="add-feed-hint">Some newsletters don't have RSS feeds — but we can work around that. We'll create a special email address that converts emails into feed articles.</p>
+                        <input type="text" placeholder="Label for this feed (e.g. Morning Brew)" value={newsletterName}
                           onChange={e => setNewsletterName(e.target.value)} onKeyDown={e => e.key === 'Enter' && addNewsletter()} />
-                        <button onClick={addNewsletter} disabled={loading}>{loading ? 'Creating...' : 'Create Feed'}</button>
-                        <p className="add-feed-hint">Creates a special email address. Subscribe to the newsletter with that email — posts appear here as articles.</p>
+                        <input type="text" placeholder="Newsletter signup page (so we can link you)" value={newsletterUrl}
+                          onChange={e => setNewsletterUrl(e.target.value)} onKeyDown={e => e.key === 'Enter' && addNewsletter()} />
+                        <button onClick={addNewsletter} disabled={loading}>{loading ? 'Generating...' : 'Generate Email'}</button>
                       </>
                     ) : (
                       <div className="newsletter-result">
-                        <p className="newsletter-result-label">Subscribe with this email:</p>
-                        <div className="newsletter-email">
-                          <code>{newsletterResult.email}</code>
-                          <button onClick={() => { navigator.clipboard.writeText(newsletterResult.email); showNotification('Copied!'); }}>Copy</button>
+                        <div className="newsletter-steps">
+                          <div className="newsletter-step">
+                            <span className="newsletter-step-num">1</span>
+                            <span>Copy this email address:</span>
+                          </div>
+                          <div className="newsletter-email">
+                            <code>{newsletterResult.email}</code>
+                            <button onClick={() => { navigator.clipboard.writeText(newsletterResult.email); showNotification('Copied!'); }}>Copy</button>
+                          </div>
+                          <div className="newsletter-step">
+                            <span className="newsletter-step-num">2</span>
+                            <span>Subscribe to the newsletter using this email{newsletterUrl.trim() ? ':' : '.'}</span>
+                          </div>
+                          {newsletterUrl.trim() && (
+                            <a className="newsletter-signup-link" href={newsletterUrl.trim().startsWith('http') ? newsletterUrl.trim() : `https://${newsletterUrl.trim()}`} target="_blank" rel="noopener noreferrer">
+                              Open signup page &rarr;
+                            </a>
+                          )}
+                          <div className="newsletter-step">
+                            <span className="newsletter-step-num">3</span>
+                            <span>That's it — when they send an email, it shows up here as an article.</span>
+                          </div>
                         </div>
-                        <p className="newsletter-result-hint">Go to the newsletter's website and subscribe with this email. New issues will appear in your feed.</p>
-                        <button className="newsletter-done-btn" onClick={() => { setNewsletterResult(null); setNewsletterName(''); setAddMode('feed'); }}>Done</button>
+                        <button className="newsletter-done-btn" onClick={() => { setNewsletterResult(null); setNewsletterName(''); setNewsletterUrl(''); setAddMode('feed'); }}>Done</button>
                       </div>
                     )}
                   </div>
