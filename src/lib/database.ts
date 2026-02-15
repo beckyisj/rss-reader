@@ -45,6 +45,16 @@ export const databaseService = {
     return true;
   },
 
+  async renameFeed(feedId: string, title: string): Promise<boolean> {
+    if (!supabase) return false;
+    const { error } = await supabase
+      .from('feeds')
+      .update({ title })
+      .eq('id', feedId);
+    if (error) { console.error('Error renaming feed:', error); return false; }
+    return true;
+  },
+
   async updateFeedColor(feedId: string, color: string | null): Promise<boolean> {
     if (!supabase) return false;
     const { error } = await supabase

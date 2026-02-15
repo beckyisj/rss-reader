@@ -66,6 +66,8 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
   const [overflowFeedId, setOverflowFeedId] = useState<string | null>(null);
   const [overflowPos, setOverflowPos] = useState<{ top: number; left: number } | null>(null);
   const [confirmDeleteFeedId, setConfirmDeleteFeedId] = useState<string | null>(null);
+  const [renamingFeedId, setRenamingFeedId] = useState<string | null>(null);
+  const [renameValue, setRenameValue] = useState('');
   const [showAddFeed, setShowAddFeed] = useState(false);
   const [showAccount, setShowAccount] = useState(false);
   const [newPassword, setNewPassword] = useState('');
@@ -365,6 +367,17 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
       setFeeds(prev => prev.map(f => f.id === feedId ? { ...f, color } : f));
       setOverflowFeedId(null);
     }
+  };
+
+  const renameFeed = async (feedId: string, title: string) => {
+    const trimmed = title.trim();
+    if (!trimmed) { setRenamingFeedId(null); return; }
+    const success = await databaseService.renameFeed(feedId, trimmed);
+    if (success) {
+      setFeeds(prev => prev.map(f => f.id === feedId ? { ...f, title: trimmed } : f));
+      showNotification('Feed renamed');
+    }
+    setRenamingFeedId(null);
   };
 
   // ---- OPML import ----
@@ -813,7 +826,15 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
                   <img className="feed-favicon" src={getFaviconUrl(feed.url)} alt="" width="16" height="16" loading="lazy" />
                   {feed.color && <span className="feed-color-dot" style={{ background: feed.color }} />}
                   {isFeedStale(feed) && <span className="feed-stale-dot" title={`Not fetched in ${STALE_HOURS}h+`} />}
-                  <span className="feed-title">{feed.title}</span>
+                  {renamingFeedId === feed.id ? (
+                    <input className="feed-rename-input" autoFocus value={renameValue}
+                      onChange={e => setRenameValue(e.target.value)}
+                      onBlur={() => renameFeed(feed.id, renameValue)}
+                      onKeyDown={e => { if (e.key === 'Enter') renameFeed(feed.id, renameValue); if (e.key === 'Escape') setRenamingFeedId(null); }}
+                      onClick={e => e.stopPropagation()} />
+                  ) : (
+                    <span className="feed-title">{feed.title}</span>
+                  )}
                   <span className="feed-item-actions">
                     {(unreadCounts[feed.id] || 0) > 0 && <span className="unread-count">{unreadCounts[feed.id]}</span>}
                     <button className="overflow-trigger"
@@ -848,6 +869,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
                         Last fetched: {timeAgo(feed.last_fetched)}
                         {isFeedStale(feed) && <span className="stale-warning"> — may be broken</span>}
                       </div>
+                      <button className="overflow-item" onClick={() => { setRenamingFeedId(feed.id); setRenameValue(feed.title); setOverflowFeedId(null); }}>Rename feed</button>
                       {confirmDeleteFeedId === feed.id ? (
                         <div className="confirm-delete">
                           <span>Delete this feed and all its articles?</span>

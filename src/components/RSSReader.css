@@ -502,6 +502,18 @@
   color: #2d2a26;
   font-weight: 600;
 }
+.feed-rename-input {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 500;
+  color: #3d3a36;
+  padding: 2px 6px;
+  border: 1px solid #c4a882;
+  border-radius: 4px;
+  background: #fff;
+  outline: none;
+}
 
 /* ---- Feed favicon ---- */
 .feed-favicon {
