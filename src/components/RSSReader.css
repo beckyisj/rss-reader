@@ -267,7 +267,7 @@
 }
 
 .add-feed-hint {
-  margin: 4px 0 6px;
+  margin: 8px 0 12px;
   font-size: 11px;
   color: #a39e96;
   line-height: 1.4;
@@ -293,8 +293,8 @@
 .newsletter-steps {
   display: flex;
   flex-direction: column;
-  gap: 14px;
-  margin: 10px 0 14px;
+  gap: 10px;
+  margin-bottom: 12px;
 }
 
 .newsletter-step {
