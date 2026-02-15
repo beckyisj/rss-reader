@@ -13,12 +13,12 @@ export const supabase = isSupabaseConfigured
   ? createClient(supabaseUrl!, supabaseAnonKey!)
   : null;
 
-// Database types
 export interface Feed {
   id: string;
   user_id: string;
   url: string;
   title: string;
+  color: string | null;
   last_fetched: string;
   created_at: string;
 }
@@ -31,5 +31,18 @@ export interface Article {
   description: string;
   pub_date: string;
   is_read: boolean;
+  is_saved: boolean;
+  is_archived: boolean;
   created_at: string;
-} 
+}
+
+export const FEED_COLORS = [
+  '#c67b4e', // terracotta
+  '#d4564e', // coral
+  '#e09040', // amber
+  '#5ba368', // sage
+  '#4a90a4', // teal
+  '#6b7db3', // slate blue
+  '#9b6ba3', // plum
+  '#c47a98', // rose
+];

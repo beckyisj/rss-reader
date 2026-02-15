@@ -1,6 +1,5 @@
 import type { VercelRequest, VercelResponse } from '@vercel/node';
 import Parser from 'rss-parser';
-import DOMPurify from 'dompurify';
 import { createClient } from '@supabase/supabase-js';
 
 const parser = new Parser();
@@ -20,9 +19,10 @@ async function refreshFeeds() {
       const parsedFeed = await parser.parseURL(feed.url);
       if (!parsedFeed?.items) continue;
 
+      // Fetch existing articles for dedup — check both link AND title
       const { data: existingArticles, error: articlesError } = await supabase
         .from('articles')
-        .select('link')
+        .select('link, title')
         .eq('feed_id', feed.id);
 
       if (articlesError) {
@@ -31,9 +31,17 @@ async function refreshFeeds() {
       }
 
       const existingLinks = new Set(existingArticles.map(a => a.link));
-      
+      const existingTitles = new Set(existingArticles.map(a => a.title));
+
       const newArticles = parsedFeed.items
-        .filter(item => item.link && !existingLinks.has(item.link))
+        .filter(item => {
+          if (!item.link) return false;
+          // Skip if exact link match
+          if (existingLinks.has(item.link)) return false;
+          // Skip if same title exists for this feed (catches republished/URL-changed articles)
+          if (item.title && existingTitles.has(item.title)) return false;
+          return true;
+        })
         .slice(0, 10)
         .map(item => {
           const fullContent = item['content:encoded'] || item.content || item.contentSnippet || '';
@@ -41,9 +49,9 @@ async function refreshFeeds() {
             feed_id: feed.id,
             title: item.title,
             link: item.link,
-            description: DOMPurify.sanitize(fullContent),
+            description: fullContent,
             pub_date: item.isoDate || item.pubDate,
-            is_read: false
+            is_read: false,
           };
         });
 
@@ -63,27 +71,31 @@ async function refreshFeeds() {
     }
   }
 
+  // ---- Auto-prune: delete read, non-saved articles older than 90 days ----
+  const ninetyDaysAgo = new Date(Date.now() - 90 * 24 * 60 * 60 * 1000).toISOString();
+  const { error: pruneError, count: pruneCount } = await supabase
+    .from('articles')
+    .delete({ count: 'exact' })
+    .eq('is_read', true)
+    .eq('is_saved', false)
+    .lt('pub_date', ninetyDaysAgo);
+
+  if (pruneError) {
+    console.error('Error pruning old articles:', pruneError);
+  } else if (pruneCount && pruneCount > 0) {
+    console.log(`Pruned ${pruneCount} old articles`);
+  }
+
   return { newArticlesCount };
 }
 
 export default async function handler(req: VercelRequest, res: VercelResponse) {
-  // Add CORS headers
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Methods', 'GET, POST, OPTIONS');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type, Authorization');
 
   if (req.method === 'OPTIONS') {
     return res.status(200).end();
-  }
-
-  // Check if this is a cron job (has authorization) or manual request
-  const isCronJob = req.headers.authorization === `Bearer ${process.env.CRON_SECRET}`;
-  
-  // For manual requests, we don't require authorization but we should add some rate limiting
-  if (!isCronJob) {
-    // Simple rate limiting: allow manual refresh every 30 seconds
-    // In production, you might want to use a proper rate limiting solution
-    console.log('Manual refresh requested');
   }
 
   try {

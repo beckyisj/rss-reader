@@ -1,14 +1,36 @@
 import React, { useState, useEffect, useCallback, useRef } from 'react';
 import { Session } from '@supabase/supabase-js';
-import he from 'he';
 import DOMPurify from 'dompurify';
 import './RSSReader.css';
 import { databaseService } from '../lib/database';
-import { supabase, isSupabaseConfigured, Feed, Article } from '../lib/supabase';
+import { supabase, isSupabaseConfigured, Feed, Article, FEED_COLORS } from '../lib/supabase';
+
+const PAGE_SIZE = 30;
+const STALE_HOURS = 48;
+
+function timeAgo(dateStr: string): string {
+  const seconds = Math.floor((Date.now() - new Date(dateStr).getTime()) / 1000);
+  if (seconds < 0) return 'just now';
+  if (seconds < 60) return 'just now';
+  const minutes = Math.floor(seconds / 60);
+  if (minutes < 60) return `${minutes}m ago`;
+  const hours = Math.floor(minutes / 60);
+  if (hours < 24) return `${hours}h ago`;
+  const days = Math.floor(hours / 24);
+  if (days < 7) return `${days}d ago`;
+  if (days < 30) return `${Math.floor(days / 7)}w ago`;
+  return new Date(dateStr).toLocaleDateString();
+}
+
+function isFeedStale(feed: Feed): boolean {
+  return Date.now() - new Date(feed.last_fetched).getTime() > STALE_HOURS * 60 * 60 * 1000;
+}
 
 interface RSSReaderProps {
   session: Session;
 }
+
+type AddMode = 'feed' | 'newsletter';
 
 const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
   const [feeds, setFeeds] = useState<Feed[]>([]);
@@ -18,12 +40,73 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
   const [isDiscovering, setIsDiscovering] = useState(false);
   const [selectedArticle, setSelectedArticle] = useState<Article | null>(null);
   const [showUnreadOnly, setShowUnreadOnly] = useState(false);
+  const [showSavedOnly, setShowSavedOnly] = useState(false);
+  const [showArchived, setShowArchived] = useState(false);
   const [notification, setNotification] = useState<string | null>(null);
   const [selectedFeedId, setSelectedFeedId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
+  const [sortOrder, setSortOrder] = useState<'alphabetical' | 'recent'>('alphabetical');
+  const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
+  const [activeIndex, setActiveIndex] = useState(-1);
+  const [addMode, setAddMode] = useState<AddMode>('feed');
+  const [newsletterName, setNewsletterName] = useState('');
+  const [newsletterResult, setNewsletterResult] = useState<{ email: string; feedUrl: string } | null>(null);
+  const [overflowFeedId, setOverflowFeedId] = useState<string | null>(null);
+  const [confirmDeleteFeedId, setConfirmDeleteFeedId] = useState<string | null>(null);
+  const [showAddFeed, setShowAddFeed] = useState(false);
+  const [showShortcuts, setShowShortcuts] = useState(false);
+  const [readingProgress, setReadingProgress] = useState(0);
+
   const notificationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const isProcessingRef = useRef(false);
-  const [sortOrder, setSortOrder] = useState<'alphabetical' | 'recent'>('alphabetical');
+  const hasAutoRefreshed = useRef(false);
+  const feedsRef = useRef<Feed[]>([]);
+  const visibleArticlesRef = useRef<Article[]>([]);
+  const activeIndexRef = useRef(-1);
+  const selectedArticleRef = useRef<Article | null>(null);
+  const articleListRef = useRef<HTMLDivElement>(null);
+  const articleViewRef = useRef<HTMLDivElement>(null);
+  const overflowRef = useRef<HTMLDivElement>(null);
+  const opmlInputRef = useRef<HTMLInputElement>(null);
+
+  feedsRef.current = feeds;
+  activeIndexRef.current = activeIndex;
+  selectedArticleRef.current = selectedArticle;
+
+  // ---- Scroll to top when opening an article ----
+  useEffect(() => {
+    if (selectedArticle && articleViewRef.current) {
+      articleViewRef.current.scrollTo(0, 0);
+    }
+    setReadingProgress(0);
+  }, [selectedArticle]);
+
+  // ---- Reading progress ----
+  useEffect(() => {
+    const el = articleViewRef.current;
+    if (!el || !selectedArticle) return;
+    const handleScroll = () => {
+      const { scrollTop, scrollHeight, clientHeight } = el;
+      if (scrollHeight <= clientHeight) { setReadingProgress(100); return; }
+      setReadingProgress(Math.round((scrollTop / (scrollHeight - clientHeight)) * 100));
+    };
+    el.addEventListener('scroll', handleScroll, { passive: true });
+    return () => el.removeEventListener('scroll', handleScroll);
+  }, [selectedArticle]);
+
+  // ---- Helpers ----
+
+  const showNotification = useCallback((msg: string) => {
+    setNotification(msg);
+    if (notificationTimeoutRef.current) clearTimeout(notificationTimeoutRef.current);
+    notificationTimeoutRef.current = setTimeout(() => setNotification(null), 3000);
+  }, []);
+
+  const getFeedColor = (feedId: string): string | null => {
+    return feeds.find(f => f.id === feedId)?.color || null;
+  };
+
+  // ---- Data loading ----
 
   const loadData = useCallback(async () => {
     try {
@@ -35,456 +118,636 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
       setArticles(articlesData);
     } catch (error) {
       console.error('Error loading data:', error);
-      // Fallback to localStorage if database is not available
-      loadFromLocalStorage();
     }
   }, []);
 
-  const loadFromLocalStorage = () => {
-    const savedFeeds = localStorage.getItem('rss-feeds');
-    const savedArticles = localStorage.getItem('rss-articles');
-    if (savedFeeds) {
-      setFeeds(JSON.parse(savedFeeds));
-    }
-    if (savedArticles) {
-      setArticles(JSON.parse(savedArticles));
-    }
-  };
+  useEffect(() => { loadData(); }, [loadData]);
+  useEffect(() => { return () => { if (notificationTimeoutRef.current) clearTimeout(notificationTimeoutRef.current); }; }, []);
 
-  // Load feeds and articles from database on component mount
-  useEffect(() => {
-    loadData();
-  }, [loadData]);
+  // ---- Auto-refresh on mount ----
 
-  // Clear notification timeout on unmount
   useEffect(() => {
-    return () => {
-      if (notificationTimeoutRef.current) {
-        clearTimeout(notificationTimeoutRef.current);
+    if (hasAutoRefreshed.current || feeds.length === 0 || !isSupabaseConfigured) return;
+    const mostRecentFetch = Math.max(...feeds.map(f => new Date(f.last_fetched).getTime()));
+    if (Date.now() - mostRecentFetch < 60 * 60 * 1000) return;
+    hasAutoRefreshed.current = true;
+    fetch('/api/refresh-feeds', { method: 'POST' })
+      .then(() => databaseService.getArticles())
+      .then(updated => { setArticles(updated); showNotification('Feeds refreshed with new articles'); })
+      .catch(() => {});
+  }, [feeds, showNotification]);
+
+  // ---- Supabase Realtime ----
+
+  useEffect(() => {
+    if (!supabase) return;
+    const channel = supabase
+      .channel('articles-realtime')
+      .on('postgres_changes', { event: 'INSERT', schema: 'public', table: 'articles' }, (payload) => {
+        const newArticle = payload.new as Article;
+        if (feedsRef.current.some(f => f.id === newArticle.feed_id)) {
+          setArticles(prev => prev.some(a => a.id === newArticle.id) ? prev : [newArticle, ...prev]);
+        }
+      })
+      .subscribe();
+    return () => { supabase!.removeChannel(channel); };
+  }, []);
+
+  // ---- Close overflow menu on outside click ----
+
+  useEffect(() => {
+    if (!overflowFeedId) return;
+    const handler = (e: MouseEvent) => {
+      if (overflowRef.current && !overflowRef.current.contains(e.target as Node)) {
+        setOverflowFeedId(null);
+        setConfirmDeleteFeedId(null);
       }
     };
+    document.addEventListener('mousedown', handler);
+    return () => document.removeEventListener('mousedown', handler);
+  }, [overflowFeedId]);
+
+  // ---- Keyboard shortcuts ----
+
+  useEffect(() => {
+    const handler = (e: KeyboardEvent) => {
+      const tag = (e.target as HTMLElement).tagName;
+      if (['INPUT', 'TEXTAREA', 'SELECT'].includes(tag)) return;
+      const visible = visibleArticlesRef.current;
+      switch (e.key) {
+        case 'j': case 'ArrowDown':
+          e.preventDefault();
+          setActiveIndex(i => { const n = Math.min(i + 1, visible.length - 1); scrollArticleIntoView(n); return n; });
+          break;
+        case 'k': case 'ArrowUp':
+          e.preventDefault();
+          setActiveIndex(i => { const n = Math.max(i - 1, 0); scrollArticleIntoView(n); return n; });
+          break;
+        case 'Enter': case 'o': {
+          e.preventDefault();
+          const idx = activeIndexRef.current;
+          if (idx >= 0 && idx < visible.length) { const a = visible[idx]; setSelectedArticle(a); markAsRead(a.id); }
+          break;
+        }
+        case 'Escape':
+          if (selectedArticleRef.current) { e.preventDefault(); setSelectedArticle(null); }
+          break;
+        case 's': {
+          e.preventDefault();
+          const art = selectedArticleRef.current;
+          if (art) toggleSaved(art.id);
+          else { const idx = activeIndexRef.current; if (idx >= 0 && idx < visible.length) toggleSaved(visible[idx].id); }
+          break;
+        }
+        case 'e': {
+          e.preventDefault();
+          const art = selectedArticleRef.current;
+          if (art) toggleArchived(art.id);
+          else { const idx = activeIndexRef.current; if (idx >= 0 && idx < visible.length) toggleArchived(visible[idx].id); }
+          break;
+        }
+        case 'u': {
+          e.preventDefault();
+          const art = selectedArticleRef.current;
+          if (art) toggleReadStatus(art.id);
+          else { const idx = activeIndexRef.current; if (idx >= 0 && idx < visible.length) toggleReadStatus(visible[idx].id); }
+          break;
+        }
+        case '?':
+          e.preventDefault();
+          setShowShortcuts(s => !s);
+          break;
+      }
+    };
+    document.addEventListener('keydown', handler);
+    return () => document.removeEventListener('keydown', handler);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  const scrollArticleIntoView = (index: number) => {
+    const list = articleListRef.current;
+    if (!list) return;
+    const items = list.querySelectorAll('.article-item');
+    if (items[index]) items[index].scrollIntoView({ block: 'nearest', behavior: 'smooth' });
+  };
+
+  // ---- Feed operations ----
 
   const autoDiscoverFeed = async (url: string): Promise<string | null> => {
     let fullUrl = url.trim();
-    if (!fullUrl.startsWith('http://') && !fullUrl.startsWith('https://')) {
-      fullUrl = `https://${fullUrl}`;
-    }
-
-    // 1. Check for direct feed links first
-    if (fullUrl.match(/\/(feed|rss|atom)\.xml$/) || fullUrl.match(/\/feed\/?$/)) {
-      return fullUrl;
-    }
-
-    // 2. Simple rules for common platforms
-    if (fullUrl.includes('substack.com')) {
-      return new URL('/feed', fullUrl).toString();
-    }
-    if (fullUrl.includes('medium.com')) {
-      // Handles medium.com/@user and medium.com/publication
-      const path = new URL(fullUrl).pathname;
-      return new URL(`/feed${path}`, fullUrl).toString();
-    }
-    if (fullUrl.includes('blogspot.com')) {
-      return new URL('/feeds/posts/default', fullUrl).toString();
-    }
-
-    // 3. Fallback to the universal scraper
+    if (!fullUrl.startsWith('http://') && !fullUrl.startsWith('https://')) fullUrl = `https://${fullUrl}`;
+    if (fullUrl.match(/\/(feed|rss|atom)\.xml$/) || fullUrl.match(/\/feed\/?$/)) return fullUrl;
+    if (fullUrl.includes('substack.com')) return new URL('/feed', fullUrl).toString();
+    if (fullUrl.includes('medium.com')) { const path = new URL(fullUrl).pathname; return new URL(`/feed${path}`, fullUrl).toString(); }
+    if (fullUrl.includes('blogspot.com')) return new URL('/feeds/posts/default', fullUrl).toString();
     try {
       const response = await fetch(`/api/discover?url=${encodeURIComponent(fullUrl)}`);
-      
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ error: 'Unknown error' }));
-        throw new Error(errorData.error || `HTTP ${response.status}: ${response.statusText}`);
-      }
-      
-      const data = await response.json();
-      return data.feedUrl;
+      if (!response.ok) { const d = await response.json().catch(() => ({ error: 'Unknown error' })); throw new Error(d.error || `HTTP ${response.status}`); }
+      return (await response.json()).feedUrl;
     } catch (error) {
-      console.error('Feed discovery error:', error);
-      if (error instanceof TypeError && error.message.includes('fetch')) {
-        alert("Network error: Please check your internet connection and try again.");
-      } else {
-        alert(`Sorry, we couldn't automatically find a feed for this site. Please find the exact RSS link and paste it here. Error: ${error instanceof Error ? error.message : 'Unknown error'}`);
-      }
+      showNotification(error instanceof TypeError && error.message.includes('fetch') ? 'Network error — check your connection' : 'Could not find a feed. Try the RSS URL directly.');
       return null;
     }
   };
 
   const addFeed = async () => {
     if (!newFeedUrl.trim() || isProcessingRef.current) return;
-
-    isProcessingRef.current = true;
-    setIsDiscovering(true);
-    setLoading(true);
-
+    isProcessingRef.current = true; setIsDiscovering(true); setLoading(true);
     try {
       const discoveredUrl = await autoDiscoverFeed(newFeedUrl);
-
-      if (!discoveredUrl) {
-        // Error is handled inside autoDiscoverFeed for now
-        return;
-      }
-
-      // Fetch RSS feed data using our own parsing API
+      if (!discoveredUrl) return;
       const response = await fetch(`/api/parse?url=${encodeURIComponent(discoveredUrl)}`);
-      
-      if (!response.ok) {
-        const errorData = await response.json().catch(() => ({ message: 'Unknown error' }));
-        throw new Error(errorData.message || `HTTP ${response.status}: ${response.statusText}`);
-      }
-      
+      if (!response.ok) { const d = await response.json().catch(() => ({ message: 'Unknown error' })); throw new Error(d.message || `HTTP ${response.status}`); }
       const data = await response.json();
+      if (!data) throw new Error('No data returned');
+      const feedTitle = data.title || 'Unknown Feed';
+      const savedFeed = await databaseService.addFeed(discoveredUrl, feedTitle);
+      if (!savedFeed) throw new Error('Failed to save feed');
+      setFeeds(prev => [savedFeed, ...prev]);
+      const newArticles: Omit<Article, 'id' | 'created_at'>[] = data.items.slice(0, 5).map((item: any) => ({
+        feed_id: savedFeed.id, title: item.title, link: item.link,
+        description: DOMPurify.sanitize(item['content:encoded'] || item.content || item.contentSnippet || ''),
+        pub_date: item.isoDate || item.pubDate, is_read: false, is_saved: false, is_archived: false,
+      }));
+      const savedArticles = await databaseService.addArticles(newArticles);
+      setArticles(prev => [...savedArticles, ...prev]);
+      setNewFeedUrl('');
+      showNotification(`Added ${feedTitle} with ${savedArticles.length} articles`);
+    } catch (error: any) { showNotification(`Error: ${error.message}`); }
+    finally { setIsDiscovering(false); setLoading(false); isProcessingRef.current = false; }
+  };
 
-      if (data) {
-        let newFeed: Feed;
-        const feedTitle = data.title || 'Unknown Feed';
-
-        if (isSupabaseConfigured) {
-          // Save to database
-          const savedFeed = await databaseService.addFeed(discoveredUrl, feedTitle);
-          if (!savedFeed) throw new Error('Failed to save feed to database');
-          newFeed = savedFeed;
-          setFeeds(prev => [newFeed, ...prev]);
-        } else {
-          // Fallback to localStorage
-          newFeed = {
-            id: Date.now().toString(),
-            user_id: 'demo-user-123',
-            url: discoveredUrl,
-            title: feedTitle,
-            last_fetched: new Date().toISOString(),
-            created_at: new Date().toISOString()
-          };
-          const updatedFeeds = [...feeds, newFeed];
-          setFeeds(updatedFeeds);
-          localStorage.setItem('rss-feeds', JSON.stringify(updatedFeeds));
-        }
-
-        // Add articles from the new feed, limited to the 5 most recent
-        const newArticles: Omit<Article, 'id' | 'created_at'>[] = data.items.slice(0, 5).map((item: any) => {
-          const fullContent = item['content:encoded'] || item.content || item.contentSnippet || '';
-          return {
-            feed_id: newFeed.id,
-            title: item.title,
-            link: item.link,
-            // Sanitize the HTML content before storing it
-            description: DOMPurify.sanitize(fullContent),
-            pub_date: item.isoDate || item.pubDate,
-            is_read: false
-          };
-        });
-
-        if (isSupabaseConfigured) {
-          // Save articles to database
-          const savedArticles = await databaseService.addArticles(newArticles);
-          setArticles(prev => [...savedArticles, ...prev]);
-        } else {
-          // Fallback to localStorage
-          const articlesWithIds = newArticles.map((article, index) => ({
-            ...article,
-            id: `${newFeed.id}-${index}`,
-            created_at: new Date().toISOString()
-          }));
-          const updatedArticles = [...articlesWithIds, ...articles];
-          setArticles(updatedArticles);
-          localStorage.setItem('rss-articles', JSON.stringify(updatedArticles));
-        }
-
-        setNewFeedUrl('');
-      } else {
-        alert('Failed to fetch RSS feed. Please check the URL.');
-      }
-    } catch (error: any) {
-      console.error('Error adding feed:', error);
-      alert(`Error: ${error.message}`);
-    } finally {
-      setIsDiscovering(false);
-      setLoading(false);
-      isProcessingRef.current = false;
-      // Show notification and fade it out
-      setNotification('Imported the 5 most recent posts!');
-      if (notificationTimeoutRef.current) {
-        clearTimeout(notificationTimeoutRef.current);
-      }
-      notificationTimeoutRef.current = setTimeout(() => setNotification(null), 3000);
-    }
+  const addNewsletter = async () => {
+    if (!newsletterName.trim() || isProcessingRef.current) return;
+    isProcessingRef.current = true; setLoading(true);
+    try {
+      const response = await fetch('/api/create-newsletter-feed', {
+        method: 'POST', headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ title: newsletterName.trim() }),
+      });
+      if (!response.ok) throw new Error('Failed to create newsletter feed');
+      const { email, feedUrl } = await response.json();
+      const savedFeed = await databaseService.addFeed(feedUrl, newsletterName.trim());
+      if (savedFeed) setFeeds(prev => [savedFeed, ...prev]);
+      setNewsletterResult({ email, feedUrl });
+      showNotification('Newsletter feed created — subscribe with the email below');
+    } catch (error: any) { showNotification(`Error: ${error.message}`); }
+    finally { setLoading(false); isProcessingRef.current = false; }
   };
 
   const removeFeed = async (feedId: string) => {
-    if (isSupabaseConfigured) {
-      const success = await databaseService.deleteFeed(feedId);
-      if (success) {
-        setFeeds(prev => prev.filter(feed => feed.id !== feedId));
-        setArticles(prev => prev.filter(article => article.feed_id !== feedId));
-      }
-    } else {
-      // Fallback to localStorage
-      const updatedFeeds = feeds.filter(feed => feed.id !== feedId);
-      const updatedArticles = articles.filter(article => !article.id.startsWith(feedId));
-      setFeeds(updatedFeeds);
-      setArticles(updatedArticles);
-      localStorage.setItem('rss-feeds', JSON.stringify(updatedFeeds));
-      localStorage.setItem('rss-articles', JSON.stringify(updatedArticles));
+    const success = await databaseService.deleteFeed(feedId);
+    if (success) {
+      setFeeds(prev => prev.filter(f => f.id !== feedId));
+      setArticles(prev => prev.filter(a => a.feed_id !== feedId));
+      if (selectedFeedId === feedId) setSelectedFeedId(null);
+      setOverflowFeedId(null);
+      setConfirmDeleteFeedId(null);
+      showNotification('Feed removed');
     }
   };
 
-  const markAsRead = async (articleId: string) => {
-    if (isSupabaseConfigured) {
-      await databaseService.markArticleAsRead(articleId);
+  const setFeedColor = async (feedId: string, color: string | null) => {
+    const success = await databaseService.updateFeedColor(feedId, color);
+    if (success) {
+      setFeeds(prev => prev.map(f => f.id === feedId ? { ...f, color } : f));
+      setOverflowFeedId(null);
     }
-    
-    setArticles(prev => 
-      prev.map(article => 
-        article.id === articleId ? { ...article, is_read: true } : article
-      )
-    );
+  };
+
+  // ---- OPML import ----
+
+  const importOpml = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const text = await file.text();
+      const parser = new DOMParser();
+      const doc = parser.parseFromString(text, 'text/xml');
+      const outlines = doc.querySelectorAll('outline[xmlUrl]');
+      if (outlines.length === 0) { showNotification('No feeds found in OPML file'); return; }
+
+      let added = 0;
+      for (const outline of Array.from(outlines)) {
+        const url = outline.getAttribute('xmlUrl');
+        const title = outline.getAttribute('text') || outline.getAttribute('title') || 'Unknown Feed';
+        if (!url) continue;
+        const savedFeed = await databaseService.addFeed(url, title);
+        if (savedFeed) {
+          setFeeds(prev => [savedFeed, ...prev]);
+          added++;
+        }
+      }
+
+      showNotification(`Imported ${added} feed${added !== 1 ? 's' : ''}. Refreshing...`);
+
+      // Trigger a refresh to fetch initial articles for imported feeds
+      fetch('/api/refresh-feeds', { method: 'POST' })
+        .then(() => databaseService.getArticles())
+        .then(updated => { setArticles(updated); showNotification(`${added} feeds imported with articles`); })
+        .catch(() => {});
+    } catch (error) {
+      showNotification('Failed to parse OPML file');
+    }
+    // Reset file input so the same file can be re-selected
+    if (opmlInputRef.current) opmlInputRef.current.value = '';
+  };
+
+  // ---- Article operations ----
+
+  const markAsRead = async (articleId: string) => {
+    await databaseService.markArticleAsRead(articleId);
+    setArticles(prev => prev.map(a => a.id === articleId ? { ...a, is_read: true } : a));
+  };
+
+  const toggleReadStatus = async (articleId: string) => {
+    const article = articles.find(a => a.id === articleId);
+    if (!article) return;
+    const success = await databaseService.toggleReadStatus(articleId, article.is_read);
+    if (success) {
+      const updated = { ...article, is_read: !article.is_read };
+      setArticles(prev => prev.map(a => a.id === articleId ? updated : a));
+      if (selectedArticle?.id === articleId) setSelectedArticle(updated);
+      showNotification(updated.is_read ? 'Marked as read' : 'Marked as unread');
+    }
+  };
+
+  const markAllAsRead = async () => {
+    const feedIds = feeds.map(f => f.id);
+    const success = await databaseService.markAllAsRead(feedIds, selectedFeedId || undefined);
+    if (success) {
+      setArticles(prev => prev.map(a => {
+        if (selectedFeedId && a.feed_id !== selectedFeedId) return a;
+        return { ...a, is_read: true };
+      }));
+      showNotification(selectedFeedId ? 'Marked feed as read' : 'Marked all as read');
+    }
+  };
+
+  const toggleSaved = async (articleId: string) => {
+    const article = articles.find(a => a.id === articleId);
+    if (!article) return;
+    const success = await databaseService.toggleSaved(articleId, !!article.is_saved);
+    if (success) {
+      const updated = { ...article, is_saved: !article.is_saved };
+      setArticles(prev => prev.map(a => a.id === articleId ? updated : a));
+      if (selectedArticle?.id === articleId) setSelectedArticle(updated);
+    }
+  };
+
+  const toggleArchived = async (articleId: string) => {
+    const article = articles.find(a => a.id === articleId);
+    if (!article) return;
+    const success = await databaseService.toggleArchived(articleId, !!article.is_archived);
+    if (success) {
+      const updated = { ...article, is_archived: !article.is_archived };
+      setArticles(prev => prev.map(a => a.id === articleId ? updated : a));
+      if (selectedArticle?.id === articleId) setSelectedArticle(null);
+      showNotification(updated.is_archived ? 'Archived' : 'Unarchived');
+    }
   };
 
   const refreshFeeds = async () => {
     if (isRefreshing || !isSupabaseConfigured) return;
-
     setIsRefreshing(true);
     try {
-      const response = await fetch('/api/refresh-feeds', {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-        },
-      });
-
-      if (!response.ok) {
-        throw new Error(`HTTP ${response.status}: ${response.statusText}`);
-      }
-
-      const result = await response.text();
-      console.log('Refresh result:', result);
-
-      // Reload articles to show new ones
-      const updatedArticles = await databaseService.getArticles();
+      const response = await fetch('/api/refresh-feeds', { method: 'POST' });
+      if (!response.ok) throw new Error(`HTTP ${response.status}`);
+      const [updatedFeeds, updatedArticles] = await Promise.all([
+        databaseService.getFeeds(),
+        databaseService.getArticles(),
+      ]);
+      setFeeds(updatedFeeds);
       setArticles(updatedArticles);
-
-      // Show success notification
-      setNotification('Feeds refreshed! New articles loaded.');
-      if (notificationTimeoutRef.current) {
-        clearTimeout(notificationTimeoutRef.current);
-      }
-      notificationTimeoutRef.current = setTimeout(() => setNotification(null), 3000);
-
+      showNotification('Feeds refreshed');
     } catch (error: any) {
-      console.error('Error refreshing feeds:', error);
-      setNotification('Failed to refresh feeds. Please try again.');
-      if (notificationTimeoutRef.current) {
-        clearTimeout(notificationTimeoutRef.current);
-      }
-      notificationTimeoutRef.current = setTimeout(() => setNotification(null), 3000);
+      showNotification('Failed to refresh feeds');
     } finally {
       setIsRefreshing(false);
     }
   };
 
-  const articlesForFeed = selectedFeedId
-    ? articles.filter(article => article.feed_id === selectedFeedId)
-    : articles;
+  // ---- Computed values ----
 
-  const filteredArticles = showUnreadOnly 
-    ? articlesForFeed.filter(article => !article.is_read)
-    : articlesForFeed;
-
-  const sortedArticles = filteredArticles.sort((a, b) => 
-    new Date(b.pub_date).getTime() - new Date(a.pub_date).getTime()
-  );
-
-  // Helper: get most recent pub_date for a feed
-  const getMostRecentPubDate = (feedId: string) => {
-    const feedArticles = articles.filter(a => a.feed_id === feedId);
-    if (feedArticles.length === 0) return 0;
-    return Math.max(...feedArticles.map(a => new Date(a.pub_date).getTime()));
-  };
-
-  // Sort feeds based on sortOrder
-  const sortedFeeds = [...feeds].sort((a, b) => {
-    if (sortOrder === 'alphabetical') {
-      return a.title.localeCompare(b.title);
-    } else {
-      // Most recent post
-      return getMostRecentPubDate(b.id) - getMostRecentPubDate(a.id);
+  const unreadCounts: Record<string, number> = {};
+  let totalUnread = 0;
+  articles.forEach(a => {
+    if (!a.is_read && !a.is_archived) {
+      unreadCounts[a.feed_id] = (unreadCounts[a.feed_id] || 0) + 1;
+      totalUnread++;
     }
   });
+
+  const getMostRecentPubDate = (feedId: string) => {
+    const fa = articles.filter(a => a.feed_id === feedId);
+    return fa.length === 0 ? 0 : Math.max(...fa.map(a => new Date(a.pub_date).getTime()));
+  };
+
+  const sortedFeeds = [...feeds].sort((a, b) =>
+    sortOrder === 'alphabetical' ? a.title.localeCompare(b.title) : getMostRecentPubDate(b.id) - getMostRecentPubDate(a.id)
+  );
+
+  const filteredArticles = articles
+    .filter(a => !selectedFeedId || a.feed_id === selectedFeedId)
+    .filter(a => showArchived ? a.is_archived : !a.is_archived)
+    .filter(a => !showUnreadOnly || !a.is_read)
+    .filter(a => !showSavedOnly || a.is_saved)
+    .sort((a, b) => new Date(b.pub_date).getTime() - new Date(a.pub_date).getTime());
+
+  const visibleArticles = filteredArticles.slice(0, visibleCount);
+  const hasMore = visibleCount < filteredArticles.length;
+  visibleArticlesRef.current = visibleArticles;
+
+  useEffect(() => { setActiveIndex(-1); setVisibleCount(PAGE_SIZE); }, [selectedFeedId, showUnreadOnly, showSavedOnly, showArchived]);
+
+  // ---- Render ----
 
   return (
     <div className={`rss-reader ${selectedArticle ? 'article-view-active' : ''}`}>
       {notification && <div className="notification-popup">{notification}</div>}
+      <input ref={opmlInputRef} type="file" accept=".opml,.xml" style={{ display: 'none' }} onChange={importOpml} />
+
+      {showShortcuts && (
+        <div className="shortcuts-overlay" onClick={() => setShowShortcuts(false)}>
+          <div className="shortcuts-modal" onClick={e => e.stopPropagation()}>
+            <div className="shortcuts-title">
+              <h3>Keyboard Shortcuts</h3>
+              <button onClick={() => setShowShortcuts(false)}>&times;</button>
+            </div>
+            <div className="shortcut-row"><div className="shortcut-keys"><kbd>j</kbd> <kbd>k</kbd></div><span>Navigate articles</span></div>
+            <div className="shortcut-row"><div className="shortcut-keys"><kbd>o</kbd></div><span>Open article</span></div>
+            <div className="shortcut-row"><div className="shortcut-keys"><kbd>Esc</kbd></div><span>Close article</span></div>
+            <div className="shortcut-row"><div className="shortcut-keys"><kbd>s</kbd></div><span>Save / unsave</span></div>
+            <div className="shortcut-row"><div className="shortcut-keys"><kbd>e</kbd></div><span>Archive / unarchive</span></div>
+            <div className="shortcut-row"><div className="shortcut-keys"><kbd>u</kbd></div><span>Toggle read / unread</span></div>
+            <div className="shortcut-row"><div className="shortcut-keys"><kbd>?</kbd></div><span>Show this menu</span></div>
+          </div>
+        </div>
+      )}
+
       <div className="app-body">
+        {/* ======== Sidebar ======== */}
         <div className="sidebar">
+          {session?.user && (
+            <div className="sidebar-user">
+              <span className="sidebar-user-email">{session.user.email}</span>
+              <button onClick={() => supabase?.auth.signOut()}>Sign out</button>
+            </div>
+          )}
+
           <div className="feed-management">
-            <details open>
-              <summary>
-                <h3>📡 Feeds</h3>
-              </summary>
-              <div style={{ margin: '10px 0' }}>
-                <label htmlFor="feed-sort-order" style={{ fontSize: 13, color: '#555' }}>Sort:&nbsp;</label>
-                <select
-                  id="feed-sort-order"
-                  value={sortOrder}
-                  onChange={e => setSortOrder(e.target.value as 'alphabetical' | 'recent')}
-                  style={{ fontSize: 13, padding: '2px 6px', borderRadius: 4 }}
-                >
-                  <option value="alphabetical">Alphabetical</option>
-                  <option value="recent">Most Recent</option>
+            <div className="feeds-header">
+              <h3>Feeds</h3>
+              <div className="feeds-header-actions">
+                <select id="feed-sort-order" value={sortOrder} onChange={e => setSortOrder(e.target.value as any)}>
+                  <option value="alphabetical">A-Z</option>
+                  <option value="recent">Recent</option>
                 </select>
-              </div>
-              <div className="db-status">
-                {isSupabaseConfigured ? '☁️ Synced' : '⚠️ Local'}
-              </div>
-              {!isSupabaseConfigured && (
-                <div className="db-warning">
-                  ⚠️ Using local storage (data won't sync across devices)
-                </div>
-              )}
-              <div className="add-feed">
-                <input
-                  type="text"
-                  placeholder="Enter website or feed URL..."
-                  value={newFeedUrl}
-                  onChange={(e) => setNewFeedUrl(e.target.value)}
-                  onKeyPress={(e) => e.key === 'Enter' && addFeed()}
-                />
-                <button onClick={addFeed} disabled={loading}>
-                  {isDiscovering ? 'Finding Feed...' : (loading ? 'Adding...' : 'Add Feed')}
+                <button className={`add-feed-toggle ${showAddFeed ? 'active' : ''}`} onClick={() => setShowAddFeed(!showAddFeed)}>
+                  {showAddFeed ? '\u00d7' : '+'}
                 </button>
               </div>
-              
-              <div className="feeds-list">
-                <div
-                  key="all-feeds"
-                  className={`feed-item ${!selectedFeedId ? 'selected' : ''}`}
-                  onClick={() => setSelectedFeedId(null)}
-                >
-                  <span className="feed-title">All Feeds</span>
+            </div>
+
+            {showAddFeed && (
+              <div className="add-feed-panel">
+                <div className="add-mode-toggle">
+                  <button className={addMode === 'feed' ? 'active' : ''} onClick={() => { setAddMode('feed'); setNewsletterResult(null); }}>RSS Feed</button>
+                  <button className={addMode === 'newsletter' ? 'active' : ''} onClick={() => { setAddMode('newsletter'); setNewsletterResult(null); }}>Newsletter</button>
                 </div>
-                {sortedFeeds.map(feed => (
-                  <div
-                    key={feed.id}
-                    className={`feed-item ${selectedFeedId === feed.id ? 'selected' : ''}`}
-                    onClick={() => setSelectedFeedId(feed.id)}
-                  >
-                    <span className="feed-title">{feed.title}</span>
-                    <button 
-                      onClick={(e) => {
-                        e.stopPropagation(); // Prevent feed selection when deleting
-                        removeFeed(feed.id);
-                      }}
-                      className="remove-feed"
-                    >
-                      ×
+                {addMode === 'feed' ? (
+                  <div className="add-feed">
+                    <input type="text" placeholder="Enter website or feed URL..." value={newFeedUrl}
+                      onChange={e => setNewFeedUrl(e.target.value)} onKeyDown={e => e.key === 'Enter' && addFeed()} />
+                    <button onClick={addFeed} disabled={loading}>
+                      {isDiscovering ? 'Finding Feed...' : loading ? 'Adding...' : 'Add Feed'}
                     </button>
+                    <button className="opml-import-btn" onClick={() => opmlInputRef.current?.click()}>Import OPML</button>
                   </div>
-                ))}
+                ) : (
+                  <div className="add-feed">
+                    {!newsletterResult ? (
+                      <>
+                        <input type="text" placeholder="Newsletter name (e.g. Morning Brew)" value={newsletterName}
+                          onChange={e => setNewsletterName(e.target.value)} onKeyDown={e => e.key === 'Enter' && addNewsletter()} />
+                        <button onClick={addNewsletter} disabled={loading}>{loading ? 'Creating...' : 'Create Feed'}</button>
+                        <p className="add-feed-hint">Creates a special email address. Subscribe to the newsletter with that email — posts appear here as articles.</p>
+                      </>
+                    ) : (
+                      <div className="newsletter-result">
+                        <p className="newsletter-result-label">Subscribe with this email:</p>
+                        <div className="newsletter-email">
+                          <code>{newsletterResult.email}</code>
+                          <button onClick={() => { navigator.clipboard.writeText(newsletterResult.email); showNotification('Copied!'); }}>Copy</button>
+                        </div>
+                        <p className="newsletter-result-hint">Go to the newsletter's website and subscribe with this email. New issues will appear in your feed.</p>
+                        <button className="newsletter-done-btn" onClick={() => { setNewsletterResult(null); setNewsletterName(''); setAddMode('feed'); }}>Done</button>
+                      </div>
+                    )}
+                  </div>
+                )}
               </div>
-            </details>
+            )}
+
+            <div className="feeds-list">
+              <div className={`feed-item ${!selectedFeedId ? 'selected' : ''}`} onClick={() => setSelectedFeedId(null)}>
+                <span className="feed-title">All Feeds</span>
+                {totalUnread > 0 && <span className="unread-count">{totalUnread}</span>}
+              </div>
+              {sortedFeeds.map(feed => (
+                <div key={feed.id} className={`feed-item ${selectedFeedId === feed.id ? 'selected' : ''}`}
+                  onClick={() => setSelectedFeedId(feed.id)} title={`Last fetched: ${timeAgo(feed.last_fetched)}`}>
+                  {feed.color && <span className="feed-color-dot" style={{ background: feed.color }} />}
+                  {isFeedStale(feed) && <span className="feed-stale-dot" title={`Not fetched in ${STALE_HOURS}h+`} />}
+                  <span className="feed-title">{feed.title}</span>
+                  <span className="feed-item-actions">
+                    {(unreadCounts[feed.id] || 0) > 0 && <span className="unread-count">{unreadCounts[feed.id]}</span>}
+                    <button className="overflow-trigger"
+                      onClick={(e) => { e.stopPropagation(); setOverflowFeedId(overflowFeedId === feed.id ? null : feed.id); setConfirmDeleteFeedId(null); }}>
+                      &hellip;
+                    </button>
+                  </span>
+                  {overflowFeedId === feed.id && (
+                    <div className="overflow-menu" ref={overflowRef} onClick={e => e.stopPropagation()}>
+                      <div className="overflow-section">
+                        <span className="overflow-label">Color</span>
+                        <div className="color-swatches">
+                          <button className={`color-swatch none ${!feed.color ? 'active' : ''}`} onClick={() => setFeedColor(feed.id, null)} title="No color" />
+                          {FEED_COLORS.map(c => (
+                            <button key={c} className={`color-swatch ${feed.color === c ? 'active' : ''}`}
+                              style={{ background: c }} onClick={() => setFeedColor(feed.id, c)} />
+                          ))}
+                        </div>
+                      </div>
+                      <div className="overflow-section overflow-meta">
+                        Last fetched: {timeAgo(feed.last_fetched)}
+                        {isFeedStale(feed) && <span className="stale-warning"> — may be broken</span>}
+                      </div>
+                      {confirmDeleteFeedId === feed.id ? (
+                        <div className="confirm-delete">
+                          <span>Delete this feed and all its articles?</span>
+                          <div className="confirm-delete-actions">
+                            <button className="confirm-delete-yes" onClick={() => removeFeed(feed.id)}>Delete</button>
+                            <button className="confirm-delete-no" onClick={() => setConfirmDeleteFeedId(null)}>Cancel</button>
+                          </div>
+                        </div>
+                      ) : (
+                        <button className="overflow-item danger" onClick={() => setConfirmDeleteFeedId(feed.id)}>Delete feed</button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              ))}
+            </div>
           </div>
 
-          <div className="filters">
-            <label>
-              <input
-                type="checkbox"
-                checked={showUnreadOnly}
-                onChange={(e) => setShowUnreadOnly(e.target.checked)}
-              />
-              Show unread only
-            </label>
-          </div>
-
-          <div className="user-profile">
-            <p>
-              Signed in as:
-              <br />
-              <strong>{session.user.email}</strong>
-            </p>
-            <button onClick={() => supabase?.auth.signOut()}>Sign Out</button>
+          <div className="sidebar-footer">
+            <button className="shortcut-hint-btn" onClick={() => setShowShortcuts(true)}><kbd>?</kbd> Shortcuts</button>
+            <span className="made-for">I love you Bubz &lt;3</span>
           </div>
         </div>
 
+        {/* ======== Main content ======== */}
         <div className="main-content">
-          <div className="articles-list">
+          <div className="articles-list" ref={articleListRef}>
             <div className="articles-header">
-              <h3>📰 Articles ({filteredArticles.length})</h3>
-              {isSupabaseConfigured && (
-                <button 
-                  onClick={refreshFeeds} 
-                  disabled={isRefreshing}
-                  className="refresh-button"
-                  title="Refresh all feeds"
-                >
-                  {isRefreshing ? '🔄 Refreshing...' : '🔄 Refresh'}
+              <div className="filter-tabs">
+                <button className={`filter-tab ${!showUnreadOnly && !showSavedOnly && !showArchived ? 'active' : ''}`}
+                  onClick={() => { setShowUnreadOnly(false); setShowSavedOnly(false); setShowArchived(false); }}>
+                  All{!showUnreadOnly && !showSavedOnly && !showArchived ? ` (${filteredArticles.length})` : ''}
                 </button>
-              )}
+                <button className={`filter-tab ${showUnreadOnly ? 'active' : ''}`}
+                  onClick={() => { setShowUnreadOnly(true); setShowSavedOnly(false); setShowArchived(false); }}>
+                  Unread{showUnreadOnly ? ` (${filteredArticles.length})` : ''}
+                </button>
+                <button className={`filter-tab ${showSavedOnly ? 'active' : ''}`}
+                  onClick={() => { setShowSavedOnly(true); setShowUnreadOnly(false); setShowArchived(false); }}>
+                  Saved{showSavedOnly ? ` (${filteredArticles.length})` : ''}
+                </button>
+                <button className={`filter-tab ${showArchived ? 'active' : ''}`}
+                  onClick={() => { setShowArchived(true); setShowUnreadOnly(false); setShowSavedOnly(false); }}>
+                  Archive{showArchived ? ` (${filteredArticles.length})` : ''}
+                </button>
+              </div>
+              <div className="articles-header-actions">
+                {!showArchived && (
+                  <button onClick={markAllAsRead} className="header-icon-btn" title={selectedFeedId ? 'Mark feed as read' : 'Mark all as read'}>
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                      <polyline points="2 8.5 6 12.5 14 4.5" />
+                    </svg>
+                  </button>
+                )}
+                {isSupabaseConfigured && (
+                  <button onClick={refreshFeeds} disabled={isRefreshing} className="header-icon-btn" title="Refresh feeds">
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className={isRefreshing ? 'spin' : ''}>
+                      <path d="M1.5 8a6.5 6.5 0 0111.48-4.17" />
+                      <polyline points="13 1 13 4.5 9.5 4.5" />
+                      <path d="M14.5 8a6.5 6.5 0 01-11.48 4.17" />
+                      <polyline points="3 15 3 11.5 6.5 11.5" />
+                    </svg>
+                  </button>
+                )}
+              </div>
             </div>
-            {sortedArticles.map(article => (
-              <div 
-                key={article.id} 
-                className={`article-item ${article.is_read ? 'read' : 'unread'}`}
-                onClick={() => {
-                  setSelectedArticle(article);
-                  markAsRead(article.id);
-                }}
-              >
-                <h4>{article.title}</h4>
-                <p className="article-meta">
-                  <span className="feed-name">
-                    {feeds.find(f => f.id === article.feed_id)?.title || 'Unknown Feed'}
-                  </span>
-                  <span className="pub-date">
-                    {new Date(article.pub_date).toLocaleDateString()}
-                  </span>
+
+            {visibleArticles.length === 0 && (
+              <div className="empty-state">
+                <div className="empty-state-icon">
+                  {feeds.length === 0 ? (
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><circle cx="12" cy="12" r="10"/><path d="M12 8v8M8 12h8"/></svg>
+                  ) : showUnreadOnly ? (
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><polyline points="4 12 9 17 20 6"/></svg>
+                  ) : (
+                    <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18"/></svg>
+                  )}
+                </div>
+                <p className="empty-state-title">
+                  {feeds.length === 0 ? 'No feeds yet' : showArchived ? 'No archived articles' : showSavedOnly ? 'No saved articles' : showUnreadOnly ? 'All caught up' : 'No articles yet'}
                 </p>
-                <p className="article-excerpt">
-                  {he.decode(article.description).replace(/<[^>]*>/g, '').substring(0, 150)}
+                <p className="empty-state-sub">
+                  {feeds.length === 0 ? 'Hit + to add your first feed' : showUnreadOnly ? "You've read everything" : ''}
                 </p>
               </div>
-            ))}
+            )}
+
+            {visibleArticles.map((article, index) => {
+              const feedColor = getFeedColor(article.feed_id);
+              return (
+                <div key={article.id}
+                  className={['article-item', article.is_read ? 'read' : 'unread', article.is_saved ? 'saved' : '', index === activeIndex ? 'active' : ''].filter(Boolean).join(' ')}
+                  onClick={() => { setSelectedArticle(article); setActiveIndex(index); markAsRead(article.id); }}>
+                  <h4>
+                    {article.is_saved && <span className="saved-marker">&#9733;</span>}
+                    {article.title}
+                  </h4>
+                  <div className="article-meta">
+                    <span className="feed-name" style={feedColor ? { background: feedColor + '15', color: feedColor } : undefined}>
+                      {feeds.find(f => f.id === article.feed_id)?.title || 'Unknown'}
+                    </span>
+                    <span className="pub-date">{timeAgo(article.pub_date)}</span>
+                  </div>
+                </div>
+              );
+            })}
+
+            {hasMore && (
+              <button className="show-more" onClick={() => setVisibleCount(c => c + PAGE_SIZE)}>
+                Show more ({filteredArticles.length - visibleCount} remaining)
+              </button>
+            )}
           </div>
 
           {selectedArticle && (
-            <div className="article-view">
-              <button className="back-button" onClick={() => setSelectedArticle(null)}>
-                ← All Articles
-              </button>
-              <div className="article-header">
-                <a href={selectedArticle.link} target="_blank" rel="noopener noreferrer">
-                  <h2>{selectedArticle.title}</h2>
-                </a>
-                <p className="article-meta">
-                  <span className="feed-name">
-                    {feeds.find(f => f.id === selectedArticle.feed_id)?.title || 'Unknown Feed'}
-                  </span>
-                  <span className="pub-date">
-                    {new Date(selectedArticle.pub_date).toLocaleDateString()}
-                  </span>
-                </p>
+            <div className="article-view" ref={articleViewRef}>
+              <div className="reading-progress-bar" style={{ width: `${readingProgress}%` }} />
+              <div className="article-view-inner">
+                <div className="article-view-toolbar">
+                  <button className="back-button" onClick={() => setSelectedArticle(null)}>
+                    <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M10 3L5 8l5 5"/></svg>
+                    Back
+                  </button>
+                  <div className="article-view-actions">
+                    <button className={`icon-btn ${!selectedArticle.is_read ? 'active' : ''}`}
+                      onClick={() => toggleReadStatus(selectedArticle.id)}
+                      title={selectedArticle.is_read ? 'Mark as unread' : 'Mark as read'}>
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                        {selectedArticle.is_read ? (
+                          <><rect x="1.5" y="3.5" width="13" height="9" rx="1"/><polyline points="1.5 4.5 8 9 14.5 4.5"/></>
+                        ) : (
+                          <><rect x="1.5" y="3.5" width="13" height="9" rx="1"/><path d="M1.5 3.5L8 8.5l6.5-5"/></>
+                        )}
+                      </svg>
+                    </button>
+                    <button className={`icon-btn ${selectedArticle.is_saved ? 'active' : ''}`}
+                      onClick={() => toggleSaved(selectedArticle.id)}
+                      title={selectedArticle.is_saved ? 'Unsave' : 'Save'}>
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill={selectedArticle.is_saved ? 'currentColor' : 'none'} stroke="currentColor" strokeWidth="1.5"><path d="M3 2.5A1.5 1.5 0 014.5 1h7A1.5 1.5 0 0113 2.5v12l-5-3.5-5 3.5V2.5z"/></svg>
+                    </button>
+                    <button className={`icon-btn ${selectedArticle.is_archived ? 'active' : ''}`}
+                      onClick={() => toggleArchived(selectedArticle.id)}
+                      title={selectedArticle.is_archived ? 'Unarchive' : 'Archive'}>
+                      <svg width="16" height="16" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><rect x="1.5" y="2" width="13" height="3.5" rx="0.75"/><path d="M3 5.5v7.5h10V5.5"/><path d="M6.5 9h3"/></svg>
+                    </button>
+                  </div>
+                </div>
+
+                <div className="article-header">
+                  <a href={selectedArticle.link} target="_blank" rel="noopener noreferrer"><h2>{selectedArticle.title}</h2></a>
+                  <div className="article-meta">
+                    <span className="feed-name">{feeds.find(f => f.id === selectedArticle.feed_id)?.title || 'Unknown Feed'}</span>
+                    <span className="pub-date">{timeAgo(selectedArticle.pub_date)}</span>
+                  </div>
+                </div>
+
+                <div className="article-content" dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(selectedArticle.description) }} />
+                <a href={selectedArticle.link} target="_blank" rel="noopener noreferrer" className="read-more">Read full article &rarr;</a>
               </div>
-              <div 
-                className="article-content"
-                dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(selectedArticle.description) }}
-              />
-              <a 
-                href={selectedArticle.link} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="read-more"
-              >
-                Read full article →
-              </a>
             </div>
           )}
         </div>
-      </div>
-      <div className="app-footer">
-        <p>P.S. you matter :)</p>
       </div>
     </div>
   );
 };
 
-export default RSSReader; 
+export default RSSReader;
