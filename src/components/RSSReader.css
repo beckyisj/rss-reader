@@ -1040,6 +1040,53 @@
   text-decoration-color: #c67b4e;
 }
 
+/* Hide common RSS feed cruft (Substack buttons, subscribe widgets, etc.) */
+.article-content .button-wrapper,
+.article-content .subscription-widget-wrap,
+.article-content .subscribe-widget,
+.article-content .footer,
+.article-content .post-footer,
+.article-content [data-component="ButtonCreate498"],
+.article-content .embedded-post-wrap,
+.article-content .share-dialog,
+.article-content .pencraft,
+.article-content .like-button-container,
+.article-content .post-ufi,
+.article-content .social-share,
+.article-content .captioned-button-wrap {
+  display: none !important;
+}
+
+/* Hide stray small images (share icons, tracking pixels, button icons) */
+.article-content img[width="0"],
+.article-content img[height="0"],
+.article-content img[src*="share_icon"],
+.article-content img[src*="button"] {
+  display: none !important;
+}
+
+/* Hide Substack action links (subscribe, share, like buttons) */
+.article-content a[href*="/subscribe"],
+.article-content a[href*="/action/"] {
+  display: none !important;
+}
+
+/* Hide small inline images that are likely icons/buttons, not content images */
+.article-content table img {
+  display: none !important;
+}
+
+/* Hide layout tables (often used for buttons in email-style RSS) */
+.article-content table {
+  display: none !important;
+}
+
+/* But keep tables that look like data tables */
+.article-content table[class*="data"],
+.article-content table thead {
+  display: table !important;
+}
+
 .article-content blockquote {
   margin: 20px 0;
   padding: 12px 20px;

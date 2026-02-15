@@ -74,6 +74,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
   const articleViewRef = useRef<HTMLDivElement>(null);
   const overflowRef = useRef<HTMLDivElement>(null);
   const opmlInputRef = useRef<HTMLInputElement>(null);
+  const actionsRef = useRef<{ markAsRead: (id: string) => void; toggleSaved: (id: string) => void; toggleArchived: (id: string) => void; toggleReadStatus: (id: string) => void }>({ markAsRead: () => {}, toggleSaved: () => {}, toggleArchived: () => {}, toggleReadStatus: () => {} });
 
   feedsRef.current = feeds;
   activeIndexRef.current = activeIndex;
@@ -225,7 +226,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
         case 'Enter': case 'o': {
           e.preventDefault();
           const idx = activeIndexRef.current;
-          if (idx >= 0 && idx < visible.length) { const a = visible[idx]; setSelectedArticle(a); markAsRead(a.id); }
+          if (idx >= 0 && idx < visible.length) { const a = visible[idx]; setSelectedArticle(a); actionsRef.current.markAsRead(a.id); }
           break;
         }
         case 'Escape':
@@ -234,22 +235,22 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
         case 's': {
           e.preventDefault();
           const art = selectedArticleRef.current;
-          if (art) toggleSaved(art.id);
-          else { const idx = activeIndexRef.current; if (idx >= 0 && idx < visible.length) toggleSaved(visible[idx].id); }
+          if (art) actionsRef.current.toggleSaved(art.id);
+          else { const idx = activeIndexRef.current; if (idx >= 0 && idx < visible.length) actionsRef.current.toggleSaved(visible[idx].id); }
           break;
         }
         case 'e': {
           e.preventDefault();
           const art = selectedArticleRef.current;
-          if (art) toggleArchived(art.id);
-          else { const idx = activeIndexRef.current; if (idx >= 0 && idx < visible.length) toggleArchived(visible[idx].id); }
+          if (art) actionsRef.current.toggleArchived(art.id);
+          else { const idx = activeIndexRef.current; if (idx >= 0 && idx < visible.length) actionsRef.current.toggleArchived(visible[idx].id); }
           break;
         }
         case 'u': {
           e.preventDefault();
           const art = selectedArticleRef.current;
-          if (art) toggleReadStatus(art.id);
-          else { const idx = activeIndexRef.current; if (idx >= 0 && idx < visible.length) toggleReadStatus(visible[idx].id); }
+          if (art) actionsRef.current.toggleReadStatus(art.id);
+          else { const idx = activeIndexRef.current; if (idx >= 0 && idx < visible.length) actionsRef.current.toggleReadStatus(visible[idx].id); }
           break;
         }
         case '?':
@@ -465,6 +466,9 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
       setIsRefreshing(false);
     }
   };
+
+  // Keep actionsRef in sync so keyboard handler always has latest closures
+  actionsRef.current = { markAsRead, toggleSaved, toggleArchived, toggleReadStatus };
 
   // ---- Computed values ----
 
