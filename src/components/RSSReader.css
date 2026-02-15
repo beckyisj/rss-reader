@@ -45,11 +45,36 @@
 .sidebar {
   width: 260px;
   background: #faf9f7;
-  border-right: 1px solid #e8e4de;
   padding: 16px;
   display: flex;
   flex-direction: column;
   overflow-y: auto;
+  flex-shrink: 0;
+}
+
+/* ---- Resize handle ---- */
+.resize-handle {
+  width: 1px;
+  background: #e8e4de;
+  cursor: col-resize;
+  flex-shrink: 0;
+  position: relative;
+  z-index: 5;
+  transition: background-color 0.15s;
+}
+
+.resize-handle::after {
+  content: '';
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: -3px;
+  right: -3px;
+}
+
+.resize-handle:hover,
+.resize-handle:active {
+  background: #c67b4e;
 }
 
 /* ---- Sidebar user ---- */
@@ -386,6 +411,8 @@
   align-items: center;
   gap: 4px;
   flex-shrink: 0;
+  min-width: 48px;
+  justify-content: flex-end;
 }
 
 .unread-count {
@@ -431,17 +458,13 @@
 
 /* ---- Overflow menu ---- */
 .overflow-menu {
-  position: absolute;
-  right: 0;
-  top: 100%;
   background: #fff;
   border: 1px solid #e8e4de;
   border-radius: 12px;
-  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.1);
-  z-index: 20;
-  min-width: 180px;
+  box-shadow: 0 8px 30px rgba(0, 0, 0, 0.12);
+  z-index: 100;
+  width: 180px;
   padding: 6px;
-  margin-top: 4px;
 }
 
 .overflow-section {
@@ -640,9 +663,9 @@
 /* ---- Articles list ---- */
 .articles-list {
   width: 360px;
-  border-right: 1px solid #eae6df;
   overflow-y: auto;
   background: #fff;
+  flex-shrink: 0;
 }
 
 .articles-header {

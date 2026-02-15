@@ -52,12 +52,18 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
   const [newsletterName, setNewsletterName] = useState('');
   const [newsletterResult, setNewsletterResult] = useState<{ email: string; feedUrl: string } | null>(null);
   const [overflowFeedId, setOverflowFeedId] = useState<string | null>(null);
+  const [overflowPos, setOverflowPos] = useState<{ top: number; left: number } | null>(null);
   const [confirmDeleteFeedId, setConfirmDeleteFeedId] = useState<string | null>(null);
   const [showAddFeed, setShowAddFeed] = useState(false);
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [readingProgress, setReadingProgress] = useState(0);
+  const [sidebarWidth, setSidebarWidth] = useState(260);
+  const [articleListWidth, setArticleListWidth] = useState(360);
 
   const notificationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const resizingRef = useRef<'sidebar' | 'articles' | null>(null);
+  const startXRef = useRef(0);
+  const startWidthRef = useRef(0);
   const isProcessingRef = useRef(false);
   const hasAutoRefreshed = useRef(false);
   const feedsRef = useRef<Feed[]>([]);
@@ -166,6 +172,39 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
     document.addEventListener('mousedown', handler);
     return () => document.removeEventListener('mousedown', handler);
   }, [overflowFeedId]);
+
+  // ---- Resizable panels ----
+
+  const startResize = (panel: 'sidebar' | 'articles', e: React.MouseEvent) => {
+    e.preventDefault();
+    resizingRef.current = panel;
+    startXRef.current = e.clientX;
+    startWidthRef.current = panel === 'sidebar' ? sidebarWidth : articleListWidth;
+    document.body.style.cursor = 'col-resize';
+    document.body.style.userSelect = 'none';
+  };
+
+  useEffect(() => {
+    const onMove = (e: MouseEvent) => {
+      if (!resizingRef.current) return;
+      const delta = e.clientX - startXRef.current;
+      if (resizingRef.current === 'sidebar') {
+        setSidebarWidth(Math.max(180, Math.min(400, startWidthRef.current + delta)));
+      } else {
+        setArticleListWidth(Math.max(220, Math.min(600, startWidthRef.current + delta)));
+      }
+    };
+    const onUp = () => {
+      if (resizingRef.current) {
+        resizingRef.current = null;
+        document.body.style.cursor = '';
+        document.body.style.userSelect = '';
+      }
+    };
+    document.addEventListener('mousemove', onMove);
+    document.addEventListener('mouseup', onUp);
+    return () => { document.removeEventListener('mousemove', onMove); document.removeEventListener('mouseup', onUp); };
+  }, []);
 
   // ---- Keyboard shortcuts ----
 
@@ -487,7 +526,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
 
       <div className="app-body">
         {/* ======== Sidebar ======== */}
-        <div className="sidebar">
+        <div className="sidebar" style={{ width: sidebarWidth }}>
           {session?.user && (
             <div className="sidebar-user">
               <span className="sidebar-user-email">{session.user.email}</span>
@@ -552,7 +591,10 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
             <div className="feeds-list">
               <div className={`feed-item ${!selectedFeedId ? 'selected' : ''}`} onClick={() => setSelectedFeedId(null)}>
                 <span className="feed-title">All Feeds</span>
-                {totalUnread > 0 && <span className="unread-count">{totalUnread}</span>}
+                <span className="feed-item-actions">
+                  {totalUnread > 0 && <span className="unread-count">{totalUnread}</span>}
+                  <span style={{ width: 22, flexShrink: 0 }} />
+                </span>
               </div>
               {sortedFeeds.map(feed => (
                 <div key={feed.id} className={`feed-item ${selectedFeedId === feed.id ? 'selected' : ''}`}
@@ -563,12 +605,23 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
                   <span className="feed-item-actions">
                     {(unreadCounts[feed.id] || 0) > 0 && <span className="unread-count">{unreadCounts[feed.id]}</span>}
                     <button className="overflow-trigger"
-                      onClick={(e) => { e.stopPropagation(); setOverflowFeedId(overflowFeedId === feed.id ? null : feed.id); setConfirmDeleteFeedId(null); }}>
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        if (overflowFeedId === feed.id) { setOverflowFeedId(null); }
+                        else {
+                          const rect = e.currentTarget.getBoundingClientRect();
+                          const flipUp = rect.bottom + 260 > window.innerHeight;
+                          setOverflowPos({ top: flipUp ? rect.top : rect.bottom + 4, left: rect.right - 180 });
+                          setOverflowFeedId(feed.id);
+                        }
+                        setConfirmDeleteFeedId(null);
+                      }}>
                       &hellip;
                     </button>
                   </span>
                   {overflowFeedId === feed.id && (
-                    <div className="overflow-menu" ref={overflowRef} onClick={e => e.stopPropagation()}>
+                    <div className="overflow-menu" ref={overflowRef} onClick={e => e.stopPropagation()}
+                      style={overflowPos ? { position: 'fixed', top: overflowPos.top, left: overflowPos.left, right: 'auto', transform: overflowPos.top < 300 ? 'none' : 'translateY(-100%)' } : undefined}>
                       <div className="overflow-section">
                         <span className="overflow-label">Color</span>
                         <div className="color-swatches">
@@ -606,10 +659,11 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
             <span className="made-for">I love you Bubz &lt;3</span>
           </div>
         </div>
+        <div className="resize-handle" onMouseDown={e => startResize('sidebar', e)} />
 
         {/* ======== Main content ======== */}
         <div className="main-content">
-          <div className="articles-list" ref={articleListRef}>
+          <div className="articles-list" ref={articleListRef} style={{ width: articleListWidth }}>
             <div className="articles-header">
               <div className="filter-tabs">
                 <button className={`filter-tab ${!showUnreadOnly && !showSavedOnly && !showArchived ? 'active' : ''}`}
@@ -696,6 +750,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
               </button>
             )}
           </div>
+          <div className="resize-handle" onMouseDown={e => startResize('articles', e)} />
 
           {selectedArticle && (
             <div className="article-view" ref={articleViewRef}>
