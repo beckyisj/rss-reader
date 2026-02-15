@@ -278,7 +278,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
   const autoDiscoverFeed = async (url: string): Promise<string | null> => {
     let fullUrl = url.trim();
     if (!fullUrl.startsWith('http://') && !fullUrl.startsWith('https://')) fullUrl = `https://${fullUrl}`;
-    if (fullUrl.match(/\/(feed|rss|atom)\.xml$/) || fullUrl.match(/\/feed\/?$/)) return fullUrl;
+    if (fullUrl.match(/\.xml$/) || fullUrl.match(/\/feed\/?$/) || fullUrl.match(/\/rss\/?$/) || fullUrl.match(/\/atom\/?$/)) return fullUrl;
     if (fullUrl.includes('substack.com')) return new URL('/feed', fullUrl).toString();
     if (fullUrl.includes('medium.com')) { const path = new URL(fullUrl).pathname; return new URL(`/feed${path}`, fullUrl).toString(); }
     if (fullUrl.includes('blogspot.com')) return new URL('/feeds/posts/default', fullUrl).toString();
