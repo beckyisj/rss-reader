@@ -49,9 +49,6 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [addMode, setAddMode] = useState<AddMode>('feed');
-  const [newsletterName, setNewsletterName] = useState('');
-  const [newsletterUrl, setNewsletterUrl] = useState('');
-  const [newsletterResult, setNewsletterResult] = useState<{ email: string; feedUrl: string } | null>(null);
   const [overflowFeedId, setOverflowFeedId] = useState<string | null>(null);
   const [overflowPos, setOverflowPos] = useState<{ top: number; left: number } | null>(null);
   const [confirmDeleteFeedId, setConfirmDeleteFeedId] = useState<string | null>(null);
@@ -322,23 +319,6 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
     finally { setIsDiscovering(false); setLoading(false); isProcessingRef.current = false; }
   };
 
-  const addNewsletter = async () => {
-    if (!newsletterName.trim() || isProcessingRef.current) return;
-    isProcessingRef.current = true; setLoading(true);
-    try {
-      const response = await fetch('/api/create-newsletter-feed', {
-        method: 'POST', headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: newsletterName.trim() }),
-      });
-      if (!response.ok) throw new Error('Failed to create newsletter feed');
-      const { email, feedUrl } = await response.json();
-      const savedFeed = await databaseService.addFeed(feedUrl, newsletterName.trim());
-      if (savedFeed) setFeeds(prev => [savedFeed, ...prev]);
-      setNewsletterResult({ email, feedUrl });
-      showNotification('Newsletter feed created — subscribe with the email below');
-    } catch (error: any) { showNotification(`Error: ${error.message}`); }
-    finally { setLoading(false); isProcessingRef.current = false; }
-  };
 
   const removeFeed = async (feedId: string) => {
     const success = await databaseService.deleteFeed(feedId);
@@ -563,7 +543,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
           },
           {
             title: 'Add Newsletters',
-            body: 'Some newsletters don\'t have RSS feeds — but we got you.\n\nHit the + button → Newsletter tab, and we\'ll generate a special email address. Subscribe with that email, and new issues show up here.',
+            body: 'Some newsletters don\'t have RSS feeds — but we got you.\n\nHit the + button → Newsletter tab for a step-by-step guide using Kill the Newsletter. It turns email newsletters into feeds!',
             target: '.add-feed-toggle', prefer: 'below',
           },
           {
@@ -678,8 +658,8 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
             {showAddFeed && (
               <div className="add-feed-panel">
                 <div className="add-mode-toggle">
-                  <button className={addMode === 'feed' ? 'active' : ''} onClick={() => { setAddMode('feed'); setNewsletterResult(null); }}>RSS Feed</button>
-                  <button className={addMode === 'newsletter' ? 'active' : ''} onClick={() => { setAddMode('newsletter'); setNewsletterResult(null); }}>Newsletter</button>
+                  <button className={addMode === 'feed' ? 'active' : ''} onClick={() => setAddMode('feed')}>RSS Feed</button>
+                  <button className={addMode === 'newsletter' ? 'active' : ''} onClick={() => setAddMode('newsletter')}>Newsletter</button>
                 </div>
                 {addMode === 'feed' ? (
                   <div className="add-feed">
@@ -692,43 +672,33 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
                   </div>
                 ) : (
                   <div className="add-feed">
-                    {!newsletterResult ? (
-                      <>
-                        <p className="add-feed-hint">Some newsletters don't have RSS feeds — but we can work around that. We'll create a special email address that converts emails into feed articles.</p>
-                        <input type="text" placeholder="Label for this feed (e.g. Morning Brew)" value={newsletterName}
-                          onChange={e => setNewsletterName(e.target.value)} onKeyDown={e => e.key === 'Enter' && addNewsletter()} />
-                        <input type="text" placeholder="Newsletter signup page (so we can link you)" value={newsletterUrl}
-                          onChange={e => setNewsletterUrl(e.target.value)} onKeyDown={e => e.key === 'Enter' && addNewsletter()} />
-                        <button onClick={addNewsletter} disabled={loading}>{loading ? 'Generating...' : 'Generate Email'}</button>
-                      </>
-                    ) : (
-                      <div className="newsletter-result">
-                        <div className="newsletter-steps">
-                          <div className="newsletter-step">
-                            <span className="newsletter-step-num">1</span>
-                            <span>Copy this email address:</span>
-                          </div>
-                          <div className="newsletter-email">
-                            <code>{newsletterResult.email}</code>
-                            <button onClick={() => { navigator.clipboard.writeText(newsletterResult.email); showNotification('Copied!'); }}>Copy</button>
-                          </div>
-                          <div className="newsletter-step">
-                            <span className="newsletter-step-num">2</span>
-                            <span>Subscribe to the newsletter using this email{newsletterUrl.trim() ? ':' : '.'}</span>
-                          </div>
-                          {newsletterUrl.trim() && (
-                            <a className="newsletter-signup-link" href={newsletterUrl.trim().startsWith('http') ? newsletterUrl.trim() : `https://${newsletterUrl.trim()}`} target="_blank" rel="noopener noreferrer">
-                              Open signup page &rarr;
-                            </a>
-                          )}
-                          <div className="newsletter-step">
-                            <span className="newsletter-step-num">3</span>
-                            <span>That's it — when they send an email, it shows up here as an article.</span>
-                          </div>
-                        </div>
-                        <button className="newsletter-done-btn" onClick={() => { setNewsletterResult(null); setNewsletterName(''); setNewsletterUrl(''); setAddMode('feed'); }}>Done</button>
+                    <p className="add-feed-hint">Some newsletters don't have RSS feeds — but we can work around that using a free tool called Kill the Newsletter.</p>
+                    <div className="newsletter-steps">
+                      <div className="newsletter-step">
+                        <span className="newsletter-step-num">1</span>
+                        <span>Create a feed on Kill the Newsletter:</span>
                       </div>
-                    )}
+                      <a className="newsletter-signup-link" href="https://kill-the-newsletter.com" target="_blank" rel="noopener noreferrer">
+                        Open Kill the Newsletter &rarr;
+                      </a>
+                      <div className="newsletter-step">
+                        <span className="newsletter-step-num">2</span>
+                        <span>Enter the newsletter name and click "Create feed". You'll get an email address and a feed URL.</span>
+                      </div>
+                      <div className="newsletter-step">
+                        <span className="newsletter-step-num">3</span>
+                        <span>Subscribe to the newsletter using that email address.</span>
+                      </div>
+                      <div className="newsletter-step">
+                        <span className="newsletter-step-num">4</span>
+                        <span>Copy the Atom feed URL and paste it here:</span>
+                      </div>
+                    </div>
+                    <input type="text" placeholder="Paste the feed URL from Kill the Newsletter..." value={newFeedUrl}
+                      onChange={e => setNewFeedUrl(e.target.value)} onKeyDown={e => e.key === 'Enter' && addFeed()} />
+                    <button onClick={addFeed} disabled={loading}>
+                      {loading ? 'Adding...' : 'Add Feed'}
+                    </button>
                   </div>
                 )}
               </div>
