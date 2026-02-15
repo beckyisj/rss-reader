@@ -544,13 +544,18 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
             target: '', prefer: 'none',
           },
           {
+            title: 'Search',
+            body: 'Quickly find any article by typing in the search bar. It filters as you type!',
+            target: '.search-bar', prefer: 'below',
+          },
+          {
             title: 'Filter Tabs',
             body: 'Slide between All, Unread, and Saved to quickly filter your articles.',
             target: '.filter-tabs', prefer: 'below',
           },
           {
-            title: 'Unread Bubbles',
-            body: 'Each feed shows how many unread articles you have. No more guessing!',
+            title: 'Feed Icons & Unread Counts',
+            body: 'Each feed now has its own icon so you can spot them at a glance. Plus unread counts so you know exactly what\'s new!',
             target: '.feeds-list', prefer: 'right',
           },
           {
@@ -564,14 +569,19 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
             target: '.resize-handle', prefer: 'right',
           },
           {
-            title: 'Read Original',
-            body: 'When you open an article, you\'ll see a "Read original →" link in the header to jump straight to the source.',
-            target: '.read-original', prefer: 'below',
+            title: 'Article Goodies',
+            body: 'When you open an article, you\'ll find:\n\n📖 Reading time estimate\n🔗 Copy link button\n🔤 Font size toggle (S / M / L)\n↗ "Read original" link to the source',
+            target: '.article-view-toolbar', prefer: 'below',
           },
           {
             title: 'Add Newsletters',
             body: 'Some newsletters don\'t have RSS feeds — but we got you.\n\nHit the + button → Newsletter tab for a step-by-step guide using Kill the Newsletter. It turns email newsletters into feeds!',
             target: '.add-feed-toggle', prefer: 'below',
+          },
+          {
+            title: 'Account Settings',
+            body: 'Tap the person icon to change your password or sign out.',
+            target: '.account-toggle', prefer: 'below',
           },
           {
             title: 'One More Thing...',
