@@ -67,6 +67,9 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
   const [overflowPos, setOverflowPos] = useState<{ top: number; left: number } | null>(null);
   const [confirmDeleteFeedId, setConfirmDeleteFeedId] = useState<string | null>(null);
   const [showAddFeed, setShowAddFeed] = useState(false);
+  const [showAccount, setShowAccount] = useState(false);
+  const [newPassword, setNewPassword] = useState('');
+  const [confirmPassword, setConfirmPassword] = useState('');
   const [showShortcuts, setShowShortcuts] = useState(false);
   const [readingProgress, setReadingProgress] = useState(0);
   const [sidebarWidth, setSidebarWidth] = useState(260);
@@ -660,8 +663,32 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
         <div className="sidebar" style={{ width: sidebarWidth }}>
           {session?.user && (
             <div className="sidebar-user">
-              <span className="sidebar-user-email">{session.user.email}</span>
-              <button onClick={() => supabase?.auth.signOut()}>Sign out</button>
+              <div className="sidebar-user-row">
+                <span className="sidebar-user-email">{session.user.email}</span>
+                <button className="account-toggle" onClick={() => setShowAccount(!showAccount)}>
+                  <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="8" cy="4.5" r="3"/><path d="M2 14.5c0-3.3 2.7-6 6-6s6 2.7 6 6"/></svg>
+                </button>
+              </div>
+              {showAccount && (
+                <div className="account-panel">
+                  <div className="account-section">
+                    <label className="account-label">Change password</label>
+                    <input type="password" placeholder="New password" value={newPassword}
+                      onChange={e => setNewPassword(e.target.value)} />
+                    <input type="password" placeholder="Confirm password" value={confirmPassword}
+                      onChange={e => setConfirmPassword(e.target.value)} />
+                    <button className="account-save-btn" disabled={!newPassword || newPassword !== confirmPassword || newPassword.length < 6}
+                      onClick={async () => {
+                        const { error } = await supabase!.auth.updateUser({ password: newPassword });
+                        if (error) showNotification(`Error: ${error.message}`);
+                        else { showNotification('Password updated'); setNewPassword(''); setConfirmPassword(''); setShowAccount(false); }
+                      }}>
+                      {newPassword && confirmPassword && newPassword !== confirmPassword ? 'Passwords don\'t match' : 'Update password'}
+                    </button>
+                  </div>
+                  <button className="account-signout" onClick={() => supabase?.auth.signOut()}>Sign out</button>
+                </div>
+              )}
             </div>
           )}
 

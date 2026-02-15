@@ -79,12 +79,15 @@
 
 /* ---- Sidebar user ---- */
 .sidebar-user {
-  display: flex;
-  justify-content: space-between;
-  align-items: center;
   padding-bottom: 14px;
   margin-bottom: 14px;
   border-bottom: 1px solid #eae6df;
+}
+
+.sidebar-user-row {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
 }
 
 .sidebar-user-email {
@@ -96,20 +99,101 @@
   max-width: 170px;
 }
 
-.sidebar-user button {
+.account-toggle {
   background: none;
   border: none;
   color: #bfb9b0;
-  font-size: 11px;
-  font-weight: 500;
   cursor: pointer;
-  padding: 0;
-  transition: color 0.15s;
-  flex-shrink: 0;
+  padding: 4px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.15s;
 }
 
-.sidebar-user button:hover {
+.account-toggle:hover {
+  background: #f0ece6;
+  color: #5a5650;
+}
+
+/* ---- Account panel ---- */
+.account-panel {
+  margin-top: 12px;
+  animation: slideDown 0.2s ease;
+}
+
+.account-section {
+  margin-bottom: 10px;
+}
+
+.account-label {
+  display: block;
+  font-size: 11px;
+  font-weight: 600;
+  color: #8a857d;
+  margin-bottom: 6px;
+}
+
+.account-panel input {
+  width: 100%;
+  padding: 7px 10px;
+  border: 1.5px solid #e0dbd4;
+  border-radius: 6px;
+  font-size: 12px;
+  margin-bottom: 6px;
+  background: #fff;
+  color: #2d2a26;
+  transition: border-color 0.15s;
+}
+
+.account-panel input:focus {
+  outline: none;
+  border-color: #bfb9b0;
+}
+
+.account-panel input::placeholder {
+  color: #d4cfc7;
+}
+
+.account-save-btn {
+  width: 100%;
+  padding: 7px;
+  background: #2d2a26;
+  color: #fff;
+  border: none;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.account-save-btn:hover:not(:disabled) {
+  background: #1a1815;
+}
+
+.account-save-btn:disabled {
+  background: #c4bfb8;
+  cursor: not-allowed;
+}
+
+.account-signout {
+  width: 100%;
+  padding: 7px;
+  background: transparent;
   color: #c0583a;
+  border: 1.5px solid #e0dbd4;
+  border-radius: 6px;
+  font-size: 12px;
+  font-weight: 600;
+  cursor: pointer;
+  transition: all 0.15s;
+}
+
+.account-signout:hover {
+  background: #fef0ec;
+  border-color: #c0583a;
 }
 
 /* ---- Feeds header ---- */
