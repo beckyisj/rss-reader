@@ -542,6 +542,11 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
             target: '.resize-handle', prefer: 'right',
           },
           {
+            title: 'Read Original',
+            body: 'When you open an article, you\'ll see a "Read original →" link in the header to jump straight to the source.',
+            target: '.read-original', prefer: 'below',
+          },
+          {
             title: 'Add Newsletters',
             body: 'Some newsletters don\'t have RSS feeds — but we got you.\n\nHit the + button → Newsletter tab for a step-by-step guide using Kill the Newsletter. It turns email newsletters into feeds!',
             target: '.add-feed-toggle', prefer: 'below',
