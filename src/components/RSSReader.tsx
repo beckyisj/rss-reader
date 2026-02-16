@@ -1045,6 +1045,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
                     <span className="pub-date">{timeAgo(selectedArticle.pub_date)}</span>
                     <span className="reading-time">{readingTime(selectedArticle.description)}</span>
                     <a href={selectedArticle.link} target="_blank" rel="noopener noreferrer" className="read-original">Read original &rarr;</a>
+                    {(() => { const feedUrl = feeds.find(f => f.id === selectedArticle.feed_id)?.url || ''; const ktnMatch = feedUrl.match(/kill-the-newsletter\.com\/feeds\/([^/.]+)/); return ktnMatch ? <a href={`https://kill-the-newsletter.com/feeds/${ktnMatch[1]}`} target="_blank" rel="noopener noreferrer" className="read-original">KtN settings</a> : null; })()}
                   </div>
                 </div>
 
