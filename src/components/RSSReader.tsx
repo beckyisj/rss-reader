@@ -337,7 +337,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
       setFeeds(prev => [savedFeed, ...prev]);
       const newArticles: Omit<Article, 'id' | 'created_at'>[] = data.items.slice(0, 5).map((item: any) => ({
         feed_id: savedFeed.id, title: item.title, link: item.link,
-        description: DOMPurify.sanitize(item['content:encoded'] || item.content || item.contentSnippet || ''),
+        description: item['content:encoded'] || item.content || item.contentSnippet || '',
         pub_date: item.isoDate || item.pubDate, is_read: false, is_saved: false, is_archived: false,
       }));
       const savedArticles = await databaseService.addArticles(newArticles);
@@ -1048,7 +1048,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
                   </div>
                 </div>
 
-                <div className={`article-content font-${fontSize}`} dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(selectedArticle.description) }} />
+                <div className={`article-content font-${fontSize}`} dangerouslySetInnerHTML={{ __html: DOMPurify.sanitize(selectedArticle.description, { ADD_ATTR: ['style', 'target', 'bgcolor', 'align', 'valign', 'width', 'height', 'cellpadding', 'cellspacing', 'border'], ADD_TAGS: ['center'] }) }} />
                 <a href={selectedArticle.link} target="_blank" rel="noopener noreferrer" className="read-more">Read full article &rarr;</a>
               </div>
             </div>
