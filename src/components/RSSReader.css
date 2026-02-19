@@ -1307,9 +1307,10 @@
   display: none !important;
 }
 
-/* Hide layout tables (often used for buttons in email-style RSS) — but keep ones with data */
-.article-content table:not([class*="data"]):not(:has(thead)):not(:has(th)) {
-  display: none !important;
+/* Style email-style layout tables to look clean */
+.article-content table {
+  border-collapse: collapse;
+  max-width: 100%;
 }
 
 .article-content blockquote {
