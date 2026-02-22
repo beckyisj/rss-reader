@@ -8,6 +8,15 @@ const supabaseUrl = process.env.REACT_APP_SUPABASE_URL!;
 const supabaseServiceKey = process.env.SUPABASE_SERVICE_ROLE_KEY!;
 const supabase = createClient(supabaseUrl, supabaseServiceKey);
 
+function normalizeLink(url: string): string {
+  try {
+    const u = new URL(url);
+    u.search = '';
+    u.hash = '';
+    return u.toString().replace(/\/$/, '');
+  } catch { return url; }
+}
+
 async function refreshFeeds() {
   const { data: feeds, error: feedsError } = await supabase.from('feeds').select('*');
   if (feedsError) throw feedsError;
@@ -30,14 +39,14 @@ async function refreshFeeds() {
         continue;
       }
 
-      const existingLinks = new Set(existingArticles.map(a => a.link));
+      const existingLinks = new Set(existingArticles.map(a => normalizeLink(a.link)));
       const existingTitles = new Set(existingArticles.map(a => a.title));
 
       const newArticles = parsedFeed.items
         .filter(item => {
           if (!item.link) return false;
-          // Skip if exact link match
-          if (existingLinks.has(item.link)) return false;
+          // Skip if normalized link match (strips query params/hashes)
+          if (existingLinks.has(normalizeLink(item.link))) return false;
           // Skip if same title exists for this feed (catches republished/URL-changed articles)
           if (item.title && existingTitles.has(item.title)) return false;
           return true;

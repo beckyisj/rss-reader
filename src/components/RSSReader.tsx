@@ -59,7 +59,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
   const [notification, setNotification] = useState<string | null>(null);
   const [selectedFeedId, setSelectedFeedId] = useState<string | null>(null);
   const [isRefreshing, setIsRefreshing] = useState(false);
-  const [sortOrder, setSortOrder] = useState<'alphabetical' | 'recent'>('alphabetical');
+  const [sortOrder, setSortOrder] = useState<'custom' | 'alphabetical' | 'recent'>('custom');
   const [visibleCount, setVisibleCount] = useState(PAGE_SIZE);
   const [activeIndex, setActiveIndex] = useState(-1);
   const [addMode, setAddMode] = useState<AddMode>('feed');
@@ -88,6 +88,11 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
     }
     return localStorage.getItem('rss-tutorial-done') ? -1 : 0;
   });
+  const [dragFeedIndex, setDragFeedIndex] = useState<number | null>(null);
+  const [dropFeedIndex, setDropFeedIndex] = useState<number | null>(null);
+  const [multiSelectedIds, setMultiSelectedIds] = useState<Set<string>>(new Set());
+  const [lastClickedIndex, setLastClickedIndex] = useState<number | null>(null);
+  const [faviconFallback, setFaviconFallback] = useState<Record<string, number>>({});
 
   const notificationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const resizingRef = useRef<'sidebar' | 'articles' | null>(null);
@@ -103,12 +108,14 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
   const articleViewRef = useRef<HTMLDivElement>(null);
   const overflowRef = useRef<HTMLDivElement>(null);
   const opmlInputRef = useRef<HTMLInputElement>(null);
-  const actionsRef = useRef<{ markAsRead: (id: string) => void; toggleSaved: (id: string) => void; toggleArchived: (id: string) => void; toggleReadStatus: (id: string) => void }>({ markAsRead: () => {}, toggleSaved: () => {}, toggleArchived: () => {}, toggleReadStatus: () => {} });
+  const actionsRef = useRef<{ markAsRead: (id: string) => void; toggleSaved: (id: string) => void; toggleArchived: (id: string) => void; toggleReadStatus: (id: string) => void; bulkMarkAsRead: () => void; bulkToggleSaved: () => void; bulkToggleArchived: () => void }>({ markAsRead: () => {}, toggleSaved: () => {}, toggleArchived: () => {}, toggleReadStatus: () => {}, bulkMarkAsRead: () => {}, bulkToggleSaved: () => {}, bulkToggleArchived: () => {} });
   const tutorialArticleRef = useRef<string | null>(null);
+  const multiSelectedIdsRef = useRef<Set<string>>(new Set());
 
   feedsRef.current = feeds;
   activeIndexRef.current = activeIndex;
   selectedArticleRef.current = selectedArticle;
+  multiSelectedIdsRef.current = multiSelectedIds;
 
   // ---- Scroll to top when opening an article ----
   useEffect(() => {
@@ -261,10 +268,13 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
           break;
         }
         case 'Escape':
-          if (selectedArticleRef.current) { e.preventDefault(); setSelectedArticle(null); }
+          e.preventDefault();
+          if (multiSelectedIdsRef.current.size > 0) { setMultiSelectedIds(new Set()); }
+          else if (selectedArticleRef.current) { setSelectedArticle(null); }
           break;
         case 's': {
           e.preventDefault();
+          if (multiSelectedIdsRef.current.size > 0) { actionsRef.current.bulkToggleSaved(); break; }
           const art = selectedArticleRef.current;
           if (art) actionsRef.current.toggleSaved(art.id);
           else { const idx = activeIndexRef.current; if (idx >= 0 && idx < visible.length) actionsRef.current.toggleSaved(visible[idx].id); }
@@ -272,6 +282,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
         }
         case 'e': {
           e.preventDefault();
+          if (multiSelectedIdsRef.current.size > 0) { actionsRef.current.bulkToggleArchived(); break; }
           const art = selectedArticleRef.current;
           if (art) actionsRef.current.toggleArchived(art.id);
           else { const idx = activeIndexRef.current; if (idx >= 0 && idx < visible.length) actionsRef.current.toggleArchived(visible[idx].id); }
@@ -279,6 +290,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
         }
         case 'u': {
           e.preventDefault();
+          if (multiSelectedIdsRef.current.size > 0) { actionsRef.current.bulkMarkAsRead(); break; }
           const art = selectedArticleRef.current;
           if (art) actionsRef.current.toggleReadStatus(art.id);
           else { const idx = activeIndexRef.current; if (idx >= 0 && idx < visible.length) actionsRef.current.toggleReadStatus(visible[idx].id); }
@@ -340,10 +352,11 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
         description: item['content:encoded'] || item.content || item.contentSnippet || '',
         pub_date: item.isoDate || item.pubDate, is_read: false, is_saved: false, is_archived: false,
       }));
-      const savedArticles = await databaseService.addArticles(newArticles);
-      setArticles(prev => [...savedArticles, ...prev]);
+      await databaseService.addArticles(newArticles);
+      const updatedArticles = await databaseService.getArticles();
+      setArticles(updatedArticles);
       setNewFeedUrl('');
-      showNotification(`Added ${feedTitle} with ${savedArticles.length} articles`);
+      showNotification(`Added ${feedTitle} with ${newArticles.length} articles`);
     } catch (error: any) { showNotification(`Error: ${error.message}`); }
     finally { setIsDiscovering(false); setLoading(false); isProcessingRef.current = false; }
   };
@@ -375,7 +388,11 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
     const success = await databaseService.renameFeed(feedId, trimmed);
     if (success) {
       setFeeds(prev => prev.map(f => f.id === feedId ? { ...f, title: trimmed } : f));
-      showNotification('Feed renamed');
+      showNotification('Feed renamed — refreshing...');
+      fetch('/api/refresh-feeds', { method: 'POST' })
+        .then(() => databaseService.getArticles())
+        .then(updated => setArticles(updated))
+        .catch(() => {});
     }
     setRenamingFeedId(null);
   };
@@ -468,8 +485,50 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
     if (success) {
       const updated = { ...article, is_archived: !article.is_archived };
       setArticles(prev => prev.map(a => a.id === articleId ? updated : a));
-      if (selectedArticle?.id === articleId) setSelectedArticle(null);
+      if (selectedArticle?.id === articleId) {
+        if (updated.is_archived) {
+          // Auto-advance to next article
+          const idx = filteredArticles.findIndex(a => a.id === articleId);
+          const next = filteredArticles[idx + 1] || filteredArticles[idx - 1] || null;
+          setSelectedArticle(next);
+          if (next) markAsRead(next.id);
+        } else {
+          setSelectedArticle(null);
+        }
+      }
       showNotification(updated.is_archived ? 'Archived' : 'Unarchived');
+    }
+  };
+
+  // ---- Bulk actions (multi-select) ----
+
+  const bulkMarkAsRead = async () => {
+    const ids = Array.from(multiSelectedIds);
+    const success = await databaseService.batchUpdateArticles(ids, { is_read: true });
+    if (success) {
+      setArticles(prev => prev.map(a => ids.includes(a.id) ? { ...a, is_read: true } : a));
+      showNotification(`${ids.length} marked as read`);
+      setMultiSelectedIds(new Set());
+    }
+  };
+
+  const bulkToggleSaved = async () => {
+    const ids = Array.from(multiSelectedIds);
+    const success = await databaseService.batchUpdateArticles(ids, { is_saved: true });
+    if (success) {
+      setArticles(prev => prev.map(a => ids.includes(a.id) ? { ...a, is_saved: true } : a));
+      showNotification(`${ids.length} saved`);
+      setMultiSelectedIds(new Set());
+    }
+  };
+
+  const bulkToggleArchived = async () => {
+    const ids = Array.from(multiSelectedIds);
+    const success = await databaseService.batchUpdateArticles(ids, { is_archived: true });
+    if (success) {
+      setArticles(prev => prev.map(a => ids.includes(a.id) ? { ...a, is_archived: true } : a));
+      showNotification(`${ids.length} archived`);
+      setMultiSelectedIds(new Set());
     }
   };
 
@@ -494,7 +553,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
   };
 
   // Keep actionsRef in sync so keyboard handler always has latest closures
-  actionsRef.current = { markAsRead, toggleSaved, toggleArchived, toggleReadStatus };
+  actionsRef.current = { markAsRead, toggleSaved, toggleArchived, toggleReadStatus, bulkMarkAsRead, bulkToggleSaved, bulkToggleArchived };
 
   // ---- Computed values ----
 
@@ -512,9 +571,11 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
     return fa.length === 0 ? 0 : Math.max(...fa.map(a => new Date(a.pub_date).getTime()));
   };
 
-  const sortedFeeds = [...feeds].sort((a, b) =>
-    sortOrder === 'alphabetical' ? a.title.localeCompare(b.title) : getMostRecentPubDate(b.id) - getMostRecentPubDate(a.id)
-  );
+  const sortedFeeds = [...feeds].sort((a, b) => {
+    if (sortOrder === 'custom') return (a.position ?? 9999) - (b.position ?? 9999);
+    if (sortOrder === 'alphabetical') return a.title.localeCompare(b.title);
+    return getMostRecentPubDate(b.id) - getMostRecentPubDate(a.id);
+  });
 
   const filteredArticles = articles
     .filter(a => !selectedFeedId || a.feed_id === selectedFeedId)
@@ -528,7 +589,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
   const hasMore = visibleCount < filteredArticles.length;
   visibleArticlesRef.current = visibleArticles;
 
-  useEffect(() => { setActiveIndex(-1); setVisibleCount(PAGE_SIZE); }, [selectedFeedId, showUnreadOnly, showSavedOnly, showArchived]);
+  useEffect(() => { setActiveIndex(-1); setVisibleCount(PAGE_SIZE); setMultiSelectedIds(new Set()); setLastClickedIndex(null); }, [selectedFeedId, showUnreadOnly, showSavedOnly, showArchived]);
 
   // ---- Render ----
 
@@ -754,6 +815,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
               <h3>Feeds</h3>
               <div className="feeds-header-actions">
                 <select id="feed-sort-order" value={sortOrder} onChange={e => setSortOrder(e.target.value as any)}>
+                  <option value="custom">Custom</option>
                   <option value="alphabetical">A-Z</option>
                   <option value="recent">Recent</option>
                 </select>
@@ -820,10 +882,35 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
                   <span style={{ width: 22, flexShrink: 0 }} />
                 </span>
               </div>
-              {sortedFeeds.map(feed => (
-                <div key={feed.id} className={`feed-item ${selectedFeedId === feed.id ? 'selected' : ''}`}
-                  onClick={() => setSelectedFeedId(feed.id)} title={`Last fetched: ${timeAgo(feed.last_fetched)}`}>
-                  <img className="feed-favicon" src={getFaviconUrl(feed.url)} alt="" width="16" height="16" loading="lazy" />
+              {sortedFeeds.map((feed, feedIndex) => (
+                <div key={feed.id}
+                  className={`feed-item ${selectedFeedId === feed.id ? 'selected' : ''} ${dragFeedIndex === feedIndex ? 'dragging' : ''} ${dropFeedIndex === feedIndex ? 'drop-target' : ''}`}
+                  onClick={() => setSelectedFeedId(feed.id)} title={`Last fetched: ${timeAgo(feed.last_fetched)}`}
+                  draggable={sortOrder === 'custom'}
+                  onDragStart={sortOrder === 'custom' ? (e) => { e.dataTransfer.effectAllowed = 'move'; setDragFeedIndex(feedIndex); } : undefined}
+                  onDragOver={sortOrder === 'custom' ? (e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; setDropFeedIndex(feedIndex); } : undefined}
+                  onDragEnd={sortOrder === 'custom' ? () => { setDragFeedIndex(null); setDropFeedIndex(null); } : undefined}
+                  onDrop={sortOrder === 'custom' ? (e) => {
+                    e.preventDefault();
+                    if (dragFeedIndex === null || dragFeedIndex === feedIndex) return;
+                    const newOrder = [...sortedFeeds];
+                    const [moved] = newOrder.splice(dragFeedIndex, 1);
+                    newOrder.splice(feedIndex, 0, moved);
+                    const updates = newOrder.map((f, i) => ({ id: f.id, position: i }));
+                    setFeeds(prev => prev.map(f => { const u = updates.find(x => x.id === f.id); return u ? { ...f, position: u.position } : f; }));
+                    databaseService.updateFeedPositions(updates);
+                    setDragFeedIndex(null);
+                    setDropFeedIndex(null);
+                  } : undefined}>
+                  {sortOrder === 'custom' && <span className="drag-handle">⠿</span>}
+                  {(faviconFallback[feed.id] || 0) >= 2 ? (
+                    <span className="feed-favicon-letter" style={feed.color ? { background: feed.color } : undefined}>{feed.title.charAt(0).toUpperCase()}</span>
+                  ) : (
+                    <img className="feed-favicon"
+                      src={(faviconFallback[feed.id] || 0) === 1 ? (() => { try { return new URL(feed.url).origin + '/favicon.ico'; } catch { return ''; } })() : getFaviconUrl(feed.url)}
+                      alt="" width="16" height="16" loading="lazy"
+                      onError={() => setFaviconFallback(prev => ({ ...prev, [feed.id]: (prev[feed.id] || 0) + 1 }))} />
+                  )}
                   {feed.color && <span className="feed-color-dot" style={{ background: feed.color }} />}
                   {isFeedStale(feed) && <span className="feed-stale-dot" title={`Not fetched in ${STALE_HOURS}h+`} />}
                   {renamingFeedId === feed.id ? (
@@ -869,6 +956,15 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
                         Last fetched: {timeAgo(feed.last_fetched)}
                         {isFeedStale(feed) && <span className="stale-warning"> — may be broken</span>}
                       </div>
+                      <button className="overflow-item" onClick={() => {
+                        setOverflowFeedId(null);
+                        setFaviconFallback(prev => { const next = { ...prev }; delete next[feed.id]; return next; });
+                        showNotification('Refreshing feed...');
+                        fetch('/api/refresh-feeds', { method: 'POST' })
+                          .then(() => Promise.all([databaseService.getFeeds(), databaseService.getArticles()]))
+                          .then(([f, a]) => { setFeeds(f); setArticles(a); showNotification('Feed refreshed'); })
+                          .catch(() => showNotification('Failed to refresh'));
+                      }}>Refresh feed</button>
                       <button className="overflow-item" onClick={() => { setRenamingFeedId(feed.id); setRenameValue(feed.title); setOverflowFeedId(null); }}>Rename feed</button>
                       {confirmDeleteFeedId === feed.id ? (
                         <div className="confirm-delete">
@@ -897,7 +993,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
 
         {/* ======== Main content ======== */}
         <div className="main-content">
-          <div className="articles-list" ref={articleListRef} style={{ width: articleListWidth }}>
+          <div className={`articles-list ${multiSelectedIds.size > 0 ? 'multi-selecting' : ''}`} ref={articleListRef} style={{ width: articleListWidth }}>
             <div className="search-bar">
               <svg width="14" height="14" viewBox="0 0 16 16" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round"><circle cx="7" cy="7" r="5"/><path d="M11 11l3.5 3.5"/></svg>
               <input type="text" placeholder="Search articles..." value={searchQuery} onChange={e => setSearchQuery(e.target.value)} />
@@ -967,8 +1063,37 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
               const feedColor = getFeedColor(article.feed_id);
               return (
                 <div key={article.id}
-                  className={['article-item', article.is_read ? 'read' : 'unread', article.is_saved ? 'saved' : '', index === activeIndex ? 'active' : ''].filter(Boolean).join(' ')}
-                  onClick={() => { setSelectedArticle(article); setActiveIndex(index); markAsRead(article.id); }}>
+                  className={['article-item', article.is_read ? 'read' : 'unread', article.is_saved ? 'saved' : '', index === activeIndex ? 'active' : '', multiSelectedIds.has(article.id) ? 'multi-selected' : ''].filter(Boolean).join(' ')}
+                  onClick={(e) => {
+                    if (e.metaKey || e.ctrlKey) {
+                      e.preventDefault();
+                      setMultiSelectedIds(prev => {
+                        const next = new Set(prev);
+                        if (next.has(article.id)) next.delete(article.id); else next.add(article.id);
+                        return next;
+                      });
+                      setLastClickedIndex(index);
+                      return;
+                    }
+                    if (e.shiftKey && lastClickedIndex !== null && multiSelectedIds.size > 0) {
+                      e.preventDefault();
+                      const start = Math.min(lastClickedIndex, index);
+                      const end = Math.max(lastClickedIndex, index);
+                      setMultiSelectedIds(prev => {
+                        const next = new Set(prev);
+                        visibleArticles.slice(start, end + 1).forEach(a => next.add(a.id));
+                        return next;
+                      });
+                      return;
+                    }
+                    if (multiSelectedIds.size > 0) setMultiSelectedIds(new Set());
+                    setSelectedArticle(article); setActiveIndex(index); markAsRead(article.id);
+                  }}>
+                  {multiSelectedIds.size > 0 && (
+                    <span className={`multi-select-checkbox ${multiSelectedIds.has(article.id) ? 'checked' : ''}`}>
+                      {multiSelectedIds.has(article.id) ? '✓' : ''}
+                    </span>
+                  )}
                   <h4>
                     {article.is_saved && <span className="saved-marker">&#9733;</span>}
                     {article.title}
@@ -987,6 +1112,16 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
               <button className="show-more" onClick={() => setVisibleCount(c => c + PAGE_SIZE)}>
                 Show more ({filteredArticles.length - visibleCount} remaining)
               </button>
+            )}
+
+            {multiSelectedIds.size > 0 && (
+              <div className="multi-select-bar">
+                <span className="multi-select-count">{multiSelectedIds.size} selected</span>
+                <button onClick={bulkMarkAsRead}>Read</button>
+                <button onClick={bulkToggleSaved}>Save</button>
+                <button onClick={bulkToggleArchived}>Archive</button>
+                <button className="multi-select-clear" onClick={() => setMultiSelectedIds(new Set())}>&times;</button>
+              </div>
             )}
           </div>
           <div className="resize-handle" onMouseDown={e => startResize('articles', e)} />

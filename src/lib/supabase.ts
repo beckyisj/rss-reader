@@ -19,6 +19,7 @@ export interface Feed {
   url: string;
   title: string;
   color: string | null;
+  position: number | null;
   last_fetched: string;
   created_at: string;
 }
