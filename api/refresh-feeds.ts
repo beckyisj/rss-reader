@@ -42,13 +42,25 @@ async function refreshFeeds() {
       const existingLinks = new Set(existingArticles.map(a => normalizeLink(a.link)));
       const existingTitles = new Set(existingArticles.map(a => a.title));
 
+      // Only import articles newer than our most recent one (prevents importing old backlog)
+      const { data: latestArticle } = await supabase
+        .from('articles')
+        .select('pub_date')
+        .eq('feed_id', feed.id)
+        .order('pub_date', { ascending: false })
+        .limit(1);
+      const cutoff = latestArticle?.[0]?.pub_date ? new Date(latestArticle[0].pub_date) : null;
+
       const newArticles = parsedFeed.items
         .filter(item => {
           if (!item.link) return false;
           // Skip if normalized link match (strips query params/hashes)
           if (existingLinks.has(normalizeLink(item.link))) return false;
-          // Skip if same title exists for this feed (catches republished/URL-changed articles)
+          // Skip if same title exists for this feed
           if (item.title && existingTitles.has(item.title)) return false;
+          // Skip if older than our newest existing article
+          const itemDate = item.isoDate || item.pubDate;
+          if (cutoff && itemDate && new Date(itemDate) <= cutoff) return false;
           return true;
         })
         .slice(0, 10)
