@@ -93,6 +93,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
   const [multiSelectedIds, setMultiSelectedIds] = useState<Set<string>>(new Set());
   const [lastClickedIndex, setLastClickedIndex] = useState<number | null>(null);
   const [faviconFallback, setFaviconFallback] = useState<Record<string, number>>({});
+  const [faviconBust, setFaviconBust] = useState<Record<string, number>>({});
 
   const notificationTimeoutRef = useRef<NodeJS.Timeout | null>(null);
   const resizingRef = useRef<'sidebar' | 'articles' | null>(null);
@@ -915,7 +916,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
                     <span className="feed-favicon-letter" style={feed.color ? { background: feed.color } : undefined}>{feed.title.charAt(0).toUpperCase()}</span>
                   ) : (
                     <img className="feed-favicon"
-                      src={(faviconFallback[feed.id] || 0) === 1 ? (() => { try { return new URL(feed.url).origin + '/favicon.ico'; } catch { return ''; } })() : getFaviconUrl(feed.url)}
+                      src={((faviconFallback[feed.id] || 0) === 1 ? (() => { try { return new URL(feed.url).origin + '/favicon.ico'; } catch { return ''; } })() : getFaviconUrl(feed.url)) + (faviconBust[feed.id] ? `&_t=${faviconBust[feed.id]}` : '')}
                       alt="" width="16" height="16" loading="lazy"
                       onError={() => setFaviconFallback(prev => ({ ...prev, [feed.id]: (prev[feed.id] || 0) + 1 }))} />
                   )}
@@ -967,6 +968,7 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
                       <button className="overflow-item" onClick={() => {
                         setOverflowFeedId(null);
                         setFaviconFallback(prev => { const next = { ...prev }; delete next[feed.id]; return next; });
+                        setFaviconBust(prev => ({ ...prev, [feed.id]: Date.now() }));
                         showNotification('Refreshing feed...');
                         fetch('/api/refresh-feeds', { method: 'POST' })
                           .then(() => Promise.all([databaseService.getFeeds(), databaseService.getArticles()]))
