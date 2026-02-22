@@ -296,6 +296,14 @@ const RSSReader: React.FC<RSSReaderProps> = ({ session }) => {
           else { const idx = activeIndexRef.current; if (idx >= 0 && idx < visible.length) actionsRef.current.toggleReadStatus(visible[idx].id); }
           break;
         }
+        case 'a': {
+          if (e.metaKey || e.ctrlKey) {
+            e.preventDefault();
+            const visible = visibleArticlesRef.current;
+            setMultiSelectedIds(new Set(visible.map(a => a.id)));
+          }
+          break;
+        }
         case '?':
           e.preventDefault();
           setShowShortcuts(s => !s);
